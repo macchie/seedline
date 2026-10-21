@@ -27,8 +27,14 @@ func _init() -> void:
 		_models.append(model)
 
 
-func set_ghosts(ghosts: Array) -> void:
+func set_ghosts(ghosts: Variant) -> void:
 	_runs.clear()
+	if ghosts is Dictionary and ghosts.is_empty():
+		ghosts = []
+	if not ghosts is Array:
+		push_warning("Seedline: received an invalid opponent ghost list.")
+		visible = false
+		return
 	for item in ghosts:
 		if not item is Dictionary:
 			continue

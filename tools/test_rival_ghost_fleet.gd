@@ -38,5 +38,8 @@ func _run_tests() -> void:
 	assert(fleet._runs[0].time_ms == 100)
 	assert(fleet._runs[9].time_ms == 1000)
 	assert(is_equal_approx(fleet._models[9].material_override.get_shader_parameter("opacity"), 0.0))
+	fleet.set_ghosts({})
+	assert(fleet._runs.is_empty())
+	assert(not fleet.visible)
 	print("Rival ghost fleet tests passed.")
 	quit()

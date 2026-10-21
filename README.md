@@ -75,6 +75,7 @@ scripts/net     Nakama client (auth, presence, leaderboards, offline run queue)
 scripts/ui      menu, HUD, touch controls and widgets
 shaders         toon, PBR, water, lava, weather, sprites, ink and clouds, grade
 server          Nakama Lua module and deploy script, see server/README.md
+website         Vite landing page; server/ and website/ are excluded from Godot with .gdignore
 tools           developer scripts (screenshots, benchmarks, track checksums); not needed to play
 ```
 
