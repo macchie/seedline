@@ -79,6 +79,9 @@ tools           developer scripts (screenshots, benchmarks, track checksums); no
 
 Leaderboards per track, track statistics, sessions and the online count come from a Nakama server
 (default `127.0.0.1:7350`, configured in the `[seedline]` section of `project.godot`).
+Players start as guests (device login). The account button in the menu (or Options → Account) creates an
+account by linking an email and password to the guest, so runs are kept, or signs in to an existing one.
+The car color and finish, and the racer name, follow the account to every device.
 See [server/README.md](server/README.md) for deployment and production notes. The game works offline.
 
 ## Exporting

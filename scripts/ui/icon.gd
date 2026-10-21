@@ -48,6 +48,9 @@ func _draw() -> void:
 		"respawn":
 			draw_arc(Vector2(12, 12), 8.0, PI, deg_to_rad(-134.5), 32, c, w, true)
 			draw_polyline(PackedVector2Array([Vector2(4, 4), Vector2(4, 8.5), Vector2(8.5, 8.5)]), c, w, true)
+		"user":
+			draw_arc(Vector2(12, 8.5), 3.8, 0.0, TAU, 20, c, w, true)
+			draw_arc(Vector2(12, 21), 8.0, PI + 0.35, TAU - 0.35, 16, c, w, true)
 		"x":
 			draw_line(Vector2(7, 7), Vector2(17, 17), c, w, true)
 			draw_line(Vector2(17, 7), Vector2(7, 17), c, w, true)

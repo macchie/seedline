@@ -105,7 +105,9 @@ func _ready() -> void:
 	net.status_changed.connect(_on_net_status)
 	net.track_info_ready.connect(_on_track_info)
 	net.run_submitted.connect(_on_run_submitted)
-	ui.name_in.text = net.display_name
+	net.account_changed.connect(_on_account_changed)
+	net.car_pulled.connect(_on_car_pulled)
+	ui.sync_account()
 	_on_net_status(net.status)
 	get_window().size_changed.connect(_on_resize)
 	_on_resize()
@@ -338,7 +340,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 			return
 		var code: int = ev.keycode
 		if state == "menu":
-			if code == KEY_ENTER or code == KEY_KP_ENTER:
+			if (code == KEY_ENTER or code == KEY_KP_ENTER) and not ui.modal_open():
 				get_viewport().set_input_as_handled()
 				start_race()
 			return
@@ -927,8 +929,25 @@ func set_finish(f: String) -> void:
 	save_car()
 
 
-func save_car() -> void:
+func _on_account_changed() -> void:
+	ui.sync_account()
+
+
+## The account's saved car replaced the local one (after signing in, or a change from another device).
+func _on_car_pulled(remote: Dictionary) -> void:
+	var color := str(remote.get("color", ""))
+	var finish := str(remote.get("finish", ""))
+	if color == "" or finish == "":
+		return
+	car_cfg.color = color
+	car_cfg.finish = finish
+	save_car(false)
+
+
+func save_car(push := true) -> void:
 	Store.set_value("car", car_cfg)
+	if push and net != null:
+		net.queue_car()
 	car_v.apply_cfg(car_cfg.color, car_cfg.finish)
 	ui.mini.car_col = U.css(car_cfg.color)
 	ui.prev_map.car_col = U.css(car_cfg.color)

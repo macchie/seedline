@@ -66,7 +66,34 @@ var panes_box: VBoxContainer
 var lb_eyebrow: Label
 var lb_stats: Label
 var online_lbl: Label
-var name_in: LineEdit
+var btn_acct: Tap
+var ic_acct: Icon
+var acct_modal: Control
+var acct_scroll: ScrollContainer
+var acct_box: VBoxContainer
+var acct_mode := "signin"
+var acct_busy := false
+var _acct_settled := false
+var acct_seg: Array = []
+var acct_seg_box: Control
+var acct_form: VBoxContainer
+var acct_info: VBoxContainer
+var acct_head: Label
+var acct_sub: Label
+var acct_email: LineEdit
+var acct_pw: LineEdit
+var acct_name: LineEdit
+var acct_rename: LineEdit
+var acct_save_name: Tap
+var acct_err: Label
+var acct_submit: Tap
+var acct_submit_lbl: Label
+var acct_signout: Tap
+var acct_who: Label
+var acct_mail_lbl: Label
+var acct_opt_status: Label
+var acct_opt_btn: Tap
+var acct_opt_lbl: Label
 var net_status_lbl: Label
 var f_rank: Label
 var swatch_box: GridContainer
@@ -335,7 +362,9 @@ func _ready() -> void:
 func focus_default() -> void:
 	if color_popup and color_popup.visible:
 		return
-	if pause_modal and pause_modal.visible:
+	if modal_open():
+		acct_email.grab_focus()
+	elif pause_modal and pause_modal.visible:
 		pause_resume.grab_focus()
 	elif finish_modal and finish_modal.visible:
 		finish_retry.grab_focus()
@@ -376,6 +405,8 @@ func _focus_direction(direction: Vector2i) -> void:
 	var next := owner.find_valid_focus_neighbor(side)
 	if next == null:
 		next = owner.find_next_valid_focus() if direction.x > 0 or direction.y > 0 else owner.find_prev_valid_focus()
+	if modal_open() and next != null and not acct_modal.is_ancestor_of(next):
+		return
 	if next and next != owner:
 		next.grab_focus()
 		if tab_scroll.is_ancestor_of(next):
@@ -404,7 +435,7 @@ func _set_stick_direction(direction: Vector2i) -> void:
 
 
 func handle_joypad_event(ev: InputEvent) -> bool:
-	if game.state != "menu" and game.state != "paused" and not finish_modal.visible and not color_popup.visible:
+	if game.state != "menu" and game.state != "paused" and not finish_modal.visible and not color_popup.visible and not modal_open():
 		return false
 	if ev is InputEventJoypadMotion:
 		if ev.axis == JOY_AXIS_LEFT_X:
@@ -437,6 +468,8 @@ func handle_joypad_event(ev: InputEvent) -> bool:
 		JOY_BUTTON_B:
 			_cancel_ui()
 		JOY_BUTTON_START:
+			if modal_open():
+				return true
 			if game.state == "menu":
 				game.start_race()
 			elif game.state == "paused":
@@ -457,7 +490,9 @@ func _activate_focus() -> void:
 
 
 func _cancel_ui() -> void:
-	if color_popup.visible:
+	if modal_open():
+		show_account(false)
+	elif color_popup.visible:
 		color_popup.hide()
 		custom_swatch.grab_focus()
 	elif game.state == "paused":
@@ -501,6 +536,12 @@ func _build_menu() -> void:
 	ic_sound = sb[1]
 	btn_sound.pressed.connect(func(): game.toggle_sound())
 	mtop.add_child(btn_sound)
+	var ab := icon_btn("user")
+	btn_acct = ab[0]
+	ic_acct = ab[1]
+	btn_acct.tooltip_text = "Account"
+	btn_acct.pressed.connect(func(): show_account(true))
+	mtop.add_child(btn_acct)
 	# desktop-only side panel for the track leaderboard
 	lb_panel = glass(Color(11 / 255.0, 14 / 255.0, 20 / 255.0, 0.78), LINE, 18.0, 3.5)
 	lb_panel.fill_bot = Color(9 / 255.0, 11 / 255.0, 16 / 255.0, 0.96)
@@ -861,25 +902,22 @@ func _build_options_pane(parent: Control) -> void:
 	o2.add_child(bind_note)
 	p.add_child(o2)
 	_set_bind_device("kb")
-	var o3 := vbox(6)
-	o3.add_child(eyebrow("Online racer name"))
-	name_in = LineEdit.new()
-	name_in.max_length = 20
-	name_in.custom_minimum_size = Vector2(0, 42)
-	name_in.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT
-	var nsb: StyleBoxFlat = seed_in.get_theme_stylebox("normal").duplicate()
-	name_in.add_theme_stylebox_override("normal", nsb)
-	name_in.add_theme_stylebox_override("focus", seed_in.get_theme_stylebox("focus").duplicate())
-	name_in.add_theme_font_override("font", UiFonts.get_font("body", 600))
-	name_in.add_theme_font_size_override("font_size", 14)
-	name_in.add_theme_color_override("font_color", FG)
-	name_in.add_theme_color_override("caret_color", FG)
-	name_in.text_submitted.connect(func(t): game.set_racer_name(t))
-	name_in.focus_exited.connect(func(): game.set_racer_name(name_in.text))
-	o3.add_child(name_in)
+	var oa := vbox(6)
+	oa.add_child(eyebrow("Account"))
+	acct_opt_status = L("", "body", 400, 12, DIM)
+	acct_opt_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	acct_opt_status.custom_minimum_size = Vector2(120, 0)
+	oa.add_child(acct_opt_status)
+	var ob := _cbtn("Sign in / Create account", false)
+	acct_opt_btn = ob[0]
+	acct_opt_lbl = ob[1]
+	ob[0].pressed.connect(func(): show_account(true))
+	oa.add_child(ob[0])
+	p.add_child(oa)
 	net_status_lbl = L("", "body", 400, 12, DIM)
-	o3.add_child(net_status_lbl)
-	p.add_child(o3)
+	net_status_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	net_status_lbl.custom_minimum_size = Vector2(120, 0)
+	p.add_child(net_status_lbl)
 
 
 func _style_slider(s: HSlider) -> void:
@@ -1142,6 +1180,282 @@ func _build_modals() -> void:
 	b4[0].pressed.connect(func(): game.to_menu())
 	fg.add_child(b4[0])
 	fbox.add_child(fg)
+	_build_account_modal()
+
+
+func _field(placeholder: String, secret := false) -> LineEdit:
+	var f := LineEdit.new()
+	f.placeholder_text = placeholder
+	f.secret = secret
+	f.custom_minimum_size = Vector2(0, 44)
+	f.add_theme_stylebox_override("normal", (seed_in.get_theme_stylebox("normal") as StyleBox).duplicate())
+	f.add_theme_stylebox_override("focus", (seed_in.get_theme_stylebox("focus") as StyleBox).duplicate())
+	f.add_theme_font_override("font", UiFonts.get_font("body", 600))
+	f.add_theme_font_size_override("font_size", 14)
+	f.add_theme_color_override("font_color", FG)
+	f.add_theme_color_override("caret_color", FG)
+	f.add_theme_color_override("font_placeholder_color", Color(1, 1, 1, 0.3))
+	return f
+
+
+func _build_account_modal() -> void:
+	acct_modal = ColorRect.new()
+	(acct_modal as ColorRect).color = Color(5 / 255.0, 6 / 255.0, 10 / 255.0, 0.7)
+	acct_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	acct_modal.mouse_filter = Control.MOUSE_FILTER_STOP
+	acct_modal.visible = false
+	add_child(acct_modal)
+	var card := glass(PANEL, LINE, 20.0, 3.0)
+	card.pad(22, 22, 22, 22)
+	acct_modal.add_child(card)
+	acct_scroll = ScrollContainer.new()
+	acct_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	acct_scroll.follow_focus = true
+	card.add_child(acct_scroll)
+	acct_box = vbox(12)
+	acct_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	acct_scroll.add_child(acct_box)
+	acct_head = L("Account", "display", 800, 30, FG, true, 0.0, true)
+	acct_box.add_child(acct_head)
+	acct_sub = L("", "body", 400, 12, DIM)
+	acct_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	acct_sub.custom_minimum_size = Vector2(120, 0)
+	acct_box.add_child(acct_sub)
+	# signed out
+	acct_form = vbox(10)
+	var sg := seg([["signin", "Sign in"], ["register", "Create account"]], func(v): _set_acct_mode(v))
+	acct_seg_box = sg[0]
+	acct_seg = sg[1]
+	acct_form.add_child(acct_seg_box)
+	acct_email = _field("Email")
+	acct_email.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_EMAIL_ADDRESS
+	acct_email.max_length = 120
+	acct_pw = _field("Password (8+ characters)", true)
+	acct_pw.max_length = 128
+	acct_name = _field("Racer name (optional)")
+	acct_name.max_length = 20
+	acct_email.text_submitted.connect(func(_t): acct_pw.grab_focus())
+	acct_pw.text_submitted.connect(func(_t): _acct_enter())
+	acct_name.text_submitted.connect(func(_t): _acct_submit())
+	acct_form.add_child(acct_email)
+	acct_form.add_child(acct_pw)
+	acct_form.add_child(acct_name)
+	acct_err = L("", "body", 600, 12, Color("#ff6b5e"))
+	acct_err.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	acct_err.custom_minimum_size = Vector2(120, 0)
+	acct_err.visible = false
+	acct_form.add_child(acct_err)
+	var sbm := _cbtn("Sign in", true)
+	acct_submit = sbm[0]
+	acct_submit_lbl = sbm[1]
+	acct_submit.pressed.connect(func(): _acct_submit())
+	acct_form.add_child(acct_submit)
+	acct_box.add_child(acct_form)
+	# signed in
+	acct_info = vbox(10)
+	var who := glass(PANEL2, Color(0, 0, 0, 0), 12.0)
+	who.pad(14, 10, 14, 10)
+	var wcol := vbox(2)
+	acct_who = L("", "display", 800, 22, FG, true, 0.02, true)
+	acct_who.clip_text = true
+	acct_who.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	acct_who.custom_minimum_size = Vector2(1, 0)
+	acct_mail_lbl = L("", "body", 500, 12, DIM)
+	acct_mail_lbl.clip_text = true
+	acct_mail_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	acct_mail_lbl.custom_minimum_size = Vector2(1, 0)
+	wcol.add_child(acct_who)
+	wcol.add_child(acct_mail_lbl)
+	who.add_child(wcol)
+	acct_info.add_child(who)
+	acct_info.add_child(eyebrow("Racer name"))
+	acct_rename = _field("Racer name")
+	acct_rename.max_length = 20
+	acct_rename.text_submitted.connect(func(_t): _acct_save_name())
+	acct_info.add_child(acct_rename)
+	var sn := _cbtn("Save name", false)
+	acct_save_name = sn[0]
+	acct_save_name.pressed.connect(func(): _acct_save_name())
+	acct_info.add_child(sn[0])
+	var so := _cbtn("Sign out", false)
+	acct_signout = so[0]
+	acct_signout.pressed.connect(func(): _acct_sign_out())
+	acct_info.add_child(so[0])
+	acct_box.add_child(acct_info)
+	var cl := _cbtn("Close", false, "Esc")
+	cl[0].pressed.connect(func(): show_account(false))
+	acct_box.add_child(cl[0])
+	acct_modal.set_meta("close", cl[0])
+	_set_acct_mode("signin")
+
+
+func _set_acct_mode(m: String) -> void:
+	acct_mode = m
+	set_seg(acct_seg, m)
+	var reg := m == "register"
+	acct_name.visible = reg
+	acct_submit_lbl.text = ("Create account" if reg else "Sign in").to_upper()
+	acct_pw.placeholder_text = "Password (8+ characters)" if reg else "Password"
+	acct_err.visible = false
+	if acct_modal.visible:
+		relayout()
+
+
+func _acct_enter() -> void:
+	if acct_mode == "register":
+		acct_name.grab_focus()
+	else:
+		_acct_submit()
+
+
+func _acct_error(t: String) -> void:
+	acct_err.text = t
+	acct_err.visible = t != ""
+	if acct_modal.visible:
+		relayout()
+
+
+func _acct_submit() -> void:
+	if acct_busy:
+		return
+	var mail := acct_email.text.strip_edges()
+	var pw := acct_pw.text
+	if not game.net.enabled:
+		_acct_error("Online features are disabled in this build.")
+		return
+	if mail.length() < 5 or mail.find("@") < 1 or mail.rfind(".") < mail.find("@") + 2:
+		_acct_error("Enter a valid email address.")
+		return
+	if acct_mode == "register" and pw.length() < Net.PASSWORD_MIN:
+		_acct_error("Use at least %d characters for the password." % Net.PASSWORD_MIN)
+		return
+	if pw == "":
+		_acct_error("Enter your password.")
+		return
+	acct_busy = true
+	acct_submit_lbl.text = "PLEASE WAIT…"
+	_acct_error("")
+	var r: Dictionary
+	if acct_mode == "register":
+		r = await game.net.register(mail, pw, acct_name.text)
+	else:
+		r = await game.net.login(mail, pw)
+	acct_busy = false
+	_set_acct_mode(acct_mode)
+	if r.ok:
+		acct_pw.text = ""
+		show_account(false)
+		toast("Signed in" if acct_mode == "signin" else "Account created")
+	else:
+		_acct_error(_acct_message(r))
+
+
+func _acct_message(r: Dictionary) -> String:
+	match int(r.code):
+		0:
+			return "Can't reach the server. Check your connection and try again."
+		400:
+			var m := str(r.message)
+			return m if m != "" else "Check your email and password."
+		401, 404:
+			return "Wrong email or password."
+		409:
+			return "That email is already registered. Use Sign in instead."
+		429:
+			return "Too many attempts. Wait a moment and try again."
+	return "Something went wrong (%d). Try again." % int(r.code)
+
+
+func _acct_save_name() -> void:
+	var n := acct_rename.text.strip_edges()
+	if n.length() < 2:
+		toast("Name needs at least 2 characters")
+		return
+	if n != game.net.display_name:
+		game.set_racer_name(n)
+		toast("Racer name saved")
+	sync_account()
+
+
+func _acct_sign_out() -> void:
+	if acct_busy:
+		return
+	acct_busy = true
+	await game.net.logout()
+	acct_busy = false
+	show_account(false)
+	toast("Signed out")
+
+
+func modal_open() -> bool:
+	return acct_modal != null and acct_modal.visible
+
+
+func show_account(on: bool) -> void:
+	if on == acct_modal.visible:
+		return
+	acct_modal.visible = on
+	_set_stick_direction(Vector2i.ZERO)
+	if on:
+		sync_account()
+		_acct_error("")
+		relayout()
+		_rise(acct_modal.get_child(0))
+		if game.net.is_registered():
+			(acct_modal.get_meta("close") as Control).grab_focus()
+		else:
+			acct_email.grab_focus()
+	else:
+		var focus := _focus_owner()
+		if focus and acct_modal.is_ancestor_of(focus):
+			focus.release_focus()
+		if menu_on:
+			btn_acct.grab_focus()
+
+
+func sync_account() -> void:
+	var net: Net = game.net
+	var reg := net.is_registered()
+	acct_form.visible = not reg
+	acct_info.visible = reg
+	acct_head.text = ("Your account" if reg else "Account").to_upper()
+	acct_sub.text = ("Your car and settings sync to every device you sign in on." if reg else
+		"Sign in to keep your car and runs across devices. Creating an account keeps everything you've done so far.")
+	acct_who.text = net.display_name
+	acct_mail_lbl.text = net.email
+	ic_acct.color = accent if reg else FG
+	ic_acct.queue_redraw()
+	if acct_opt_status:
+		acct_opt_status.text = ("Signed in as %s" % net.email) if reg else "Playing as a guest. Sign in to sync your car and runs."
+		acct_opt_lbl.text = ("Manage account" if reg else "Sign in / Create account").to_upper()
+	if acct_rename and not acct_rename.has_focus():
+		acct_rename.text = net.display_name
+	if acct_modal.visible:
+		relayout()
+
+
+func _layout_account(W: float, H: float, sl: float, sr: float, st: float, sb: float) -> void:
+	if acct_modal == null:
+		return
+	var card: Glass = acct_modal.get_child(0)
+	var cw := minf(440.0, W - sl - sr - 16.0)
+	var avail := H - st - sb - 16.0
+	# wrapped labels only report their real height once they have the final width
+	for l in [acct_sub, acct_err]:
+		l.custom_minimum_size.x = cw - 44.0
+	acct_box.custom_minimum_size.x = cw - 44.0
+	var content := acct_box.get_combined_minimum_size().y
+	acct_scroll.custom_minimum_size = Vector2(0, minf(content, maxf(120.0, avail - 44.0)))
+	card.size = Vector2(cw, 0)
+	card.size = Vector2(cw, card.get_combined_minimum_size().y)
+	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - card.size.y) / 2.0))
+	card._sync()
+	if not _acct_settled:
+		_acct_settled = true
+		get_tree().process_frame.connect(func():
+			_acct_settled = false
+			if acct_modal.visible:
+				_layout_account(W, H, sl, sr, st, sb), CONNECT_ONE_SHOT)
 
 
 func _build_overlays() -> void:
@@ -1205,7 +1519,7 @@ func relayout() -> void:
 	if right_brand:
 		# justify-content:flex-end, gap 14: brand then sound button at the right
 		btn_sound.position = Vector2(W - sr - 42.0, top_pad + (bsz.y - 42.0) / 2.0)
-		brand.position = Vector2(btn_sound.position.x - 14.0 - bsz.x, top_pad)
+		brand.position = Vector2(btn_sound.position.x - 14.0 - 50.0 - bsz.x, top_pad)
 		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		(wm_a.get_parent() as HBoxContainer).alignment = BoxContainer.ALIGNMENT_END
 	else:
@@ -1214,6 +1528,8 @@ func relayout() -> void:
 		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		(wm_a.get_parent() as HBoxContainer).alignment = BoxContainer.ALIGNMENT_BEGIN
 	btn_sound.size = Vector2(42, 42)
+	btn_acct.size = Vector2(42, 42)
+	btn_acct.position = btn_sound.position - Vector2(50.0, 0.0)
 	# sheet
 	var name_size := clampf(7.4 * vw, 26.0, 40.0)
 	var pm := clampf(21.0 * vw, 72.0, 96.0)
@@ -1290,6 +1606,7 @@ func relayout() -> void:
 	(boost_rect.material as ShaderMaterial).set_shader_parameter("rect_size", Vector2(W, H))
 	_layout_pads(W, H, sl, sr, sb)
 	# modals
+	_layout_account(W, H, sl, sr, st, sb)
 	for m in [pause_modal, finish_modal]:
 		var card: Glass = m.get_child(0)
 		var cw := minf(420.0, W - sl - sr)
@@ -1426,7 +1743,7 @@ func _layout_lb_panel(W: float, H: float, st: float, sr: float, wide: bool, show
 	if not show:
 		return
 	var w := clampf(W * 0.26, 300.0, 380.0)
-	var top := st + 92.0
+	var top := maxf(st + 92.0, btn_sound.position.y + btn_sound.size.y + 12.0)
 	lb_panel.position = Vector2(W - sr - w, top)
 	lb_panel_title.text = "Track leaderboard".to_upper()
 	var avail := H - top - 24.0
@@ -1509,7 +1826,7 @@ func set_accent(a: Color, on: Color) -> void:
 	_style_slider(sens_slider)
 	var f: StyleBoxFlat = seed_in.get_theme_stylebox("focus")
 	f.border_color = accent
-	for m in [pause_modal, finish_modal]:
+	for m in [pause_modal, finish_modal, acct_modal]:
 		for b in _all_taps(m):
 			if b.has_meta("primary") and b.get_meta("primary"):
 				b.style(accent, Color(0, 0, 0, 0), 12.0)
@@ -1780,8 +2097,14 @@ func sync_car() -> void:
 	set_seg(finish_seg, game.car_cfg.finish)
 
 
+func _input(ev: InputEvent) -> void:
+	if modal_open() and ev is InputEventKey and ev.pressed and not ev.echo and ev.keycode == KEY_ESCAPE:
+		get_viewport().set_input_as_handled()
+		show_account(false)
+
+
 func _process(_dt: float) -> void:
-	if _nav_direction != Vector2i.ZERO and (menu_on or pause_modal.visible or finish_modal.visible or color_popup.visible):
+	if _nav_direction != Vector2i.ZERO and (menu_on or pause_modal.visible or finish_modal.visible or color_popup.visible or modal_open()):
 		_nav_repeat_timer -= _dt
 		if _nav_repeat_timer <= 0.0:
 			_focus_direction(_nav_direction)

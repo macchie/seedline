@@ -7,6 +7,8 @@ signal status_changed(text: String)
 signal online_changed(count: int)
 signal track_info_ready(seed: String, env: String, info: Dictionary)
 signal run_submitted(seed: String, env: String, info: Dictionary)
+signal account_changed
+signal car_pulled(car: Dictionary)
 signal _auth_finished
 
 const QUEUE_KEY := "net_queue"
@@ -15,6 +17,8 @@ const TIMEOUT_S := 8.0
 const HEARTBEAT_S := 60.0
 const ROOM := "seedline"
 const SEED_RE := "^[A-Z0-9][A-Z0-9_-]*$"
+const CAR_PUSH_DELAY_S := 1.5
+const PASSWORD_MIN := 8
 
 var enabled := true
 var host := "127.0.0.1"
@@ -25,6 +29,7 @@ var server_key := "defaultkey"
 var status := "offline"
 var online := 0
 var display_name := ""
+var email := ""
 
 var _token := ""
 var _refresh := ""
@@ -42,6 +47,9 @@ var _connecting := false
 var _heartbeat: Timer
 var _seed_re := RegEx.new()
 var _info_serial := 0
+var _car_timer: Timer
+var _car_serial := 0
+var _car_busy := false
 
 
 func _ready() -> void:
@@ -54,6 +62,12 @@ func _ready() -> void:
 		Store.set_value("racer_name", display_name)
 	_token = str(Store.get_value("net_token", ""))
 	_refresh = str(Store.get_value("net_refresh", ""))
+	email = str(Store.get_value("net_email", ""))
+	_car_timer = Timer.new()
+	_car_timer.one_shot = true
+	_car_timer.wait_time = CAR_PUSH_DELAY_S
+	_car_timer.timeout.connect(_push_car)
+	add_child(_car_timer)
 	_heartbeat = Timer.new()
 	_heartbeat.wait_time = HEARTBEAT_S
 	_heartbeat.timeout.connect(_on_heartbeat)
@@ -84,6 +98,80 @@ func _load_config() -> void:
 
 
 # ================================================================== public api
+
+func is_registered() -> bool:
+	return email != ""
+
+
+## Links an email and password to the current account, so runs and settings carry over. Returns {ok, code, message}.
+func register(mail: String, password: String, name: String) -> Dictionary:
+	if not enabled:
+		return _result(false, 0, "disabled", true)
+	if not await _ensure_auth():
+		return _result(false, 0, "offline", false)
+	var body := {"email": mail, "password": password}
+	var r: Dictionary = await _api("POST", "/v2/account/link/email", body, true)
+	if r.code == 401:
+		_token = ""
+		if await _ensure_auth():
+			r = await _api("POST", "/v2/account/link/email", body, true)
+	if not r.ok:
+		return r
+	email = mail
+	Store.set_value("net_email", mail)
+	if name.strip_edges().length() >= 2:
+		await set_display_name(name)
+	await _refresh_account(false)
+	account_changed.emit()
+	queue_car()
+	return r
+
+
+## Switches to an existing account. Its car and name replace the local ones. Returns {ok, code, message}.
+func login(mail: String, password: String) -> Dictionary:
+	if not enabled:
+		return _result(false, 0, "disabled", true)
+	if _token != "":
+		await flush_queue()
+	var r: Dictionary = await _api("POST", "/v2/account/authenticate/email?create=false", {"email": mail, "password": password}, false)
+	if not r.ok:
+		return r
+	if not _take_session(r):
+		return _result(false, 0, "bad response", false)
+	email = mail
+	Store.set_value("net_email", mail)
+	await _switch_session()
+	account_changed.emit()
+	return r
+
+
+func logout() -> void:
+	if not enabled:
+		return
+	await flush_queue()
+	if _token != "":
+		await _api("POST", "/v2/session/logout", {"token": _token, "refresh_token": _refresh}, true)
+	_token = ""
+	_refresh = ""
+	email = ""
+	Store.set_value("net_token", "")
+	Store.set_value("net_refresh", "")
+	Store.set_value("net_email", "")
+	# the old device id is linked to the account that just signed out
+	Store.set_value("net_device", "")
+	display_name = "Racer-%04d" % (randi() % 10000)
+	Store.set_value("racer_name", display_name)
+	await _switch_session()
+	account_changed.emit()
+
+
+## Marks the garage settings as changed; they are uploaded shortly after the last change.
+func queue_car() -> void:
+	_car_serial += 1
+	Store.set_value("car_dirty", true)
+	if enabled:
+		_car_timer.start()
+
 
 func is_online() -> bool:
 	return enabled and status == "online"
@@ -188,6 +276,7 @@ func _connect() -> void:
 	_connecting = true
 	var ok: bool = await _ensure_auth()
 	if ok:
+		await _refresh_account(true)
 		await _hello()
 	_connecting = false
 	if not ok or not _hello_done:
@@ -195,6 +284,93 @@ func _connect() -> void:
 		return
 	_open_socket()
 	flush_queue()
+	sync_car()
+
+
+func _switch_session() -> void:
+	while _connecting:
+		await get_tree().process_frame
+	if _socket != null:
+		_socket.close()
+		_socket = null
+		_socket_state = -1
+	_room.clear()
+	_socket_retry_at = 0
+	_socket_backoff = 2.0
+	_hello_done = false
+	_set_status("offline")
+	await _connect()
+
+
+func _refresh_account(adopt_name: bool) -> void:
+	var r: Dictionary = await _api("GET", "/v2/account", "", true)
+	if not r.ok or not (r.data is Dictionary):
+		return
+	var mail := str(r.data.get("email", ""))
+	var changed := mail != email
+	email = mail
+	Store.set_value("net_email", mail)
+	var user = r.data.get("user")
+	if adopt_name and mail != "" and user is Dictionary:
+		var n := str(user.get("display_name", ""))
+		if n.length() >= 2 and n != display_name:
+			display_name = n
+			Store.set_value("racer_name", n)
+			changed = true
+	if changed:
+		account_changed.emit()
+
+
+# ================================================================== garage sync
+
+func sync_car() -> void:
+	if not enabled or _car_busy:
+		return
+	_car_busy = true
+	var r: Dictionary = await call_rpc("seedline_get_car", {})
+	_car_busy = false
+	if not r.ok or not (r.data is Dictionary):
+		return
+	var uid := _uid()
+	var remote = r.data.get("car")
+	var rev := int(r.data.get("rev", 0))
+	var same_owner: bool = uid != "" and str(Store.get_value("car_uid", "")) == uid
+	var dirty := bool(Store.get_value("car_dirty", false))
+	if not (remote is Dictionary) or remote.is_empty():
+		await _push_car()
+	elif same_owner and dirty:
+		await _push_car()
+	elif not same_owner or rev > int(Store.get_value("car_rev", 0)):
+		Store.set_value("car_rev", rev)
+		Store.set_value("car_uid", uid)
+		Store.set_value("car_dirty", false)
+		car_pulled.emit(remote)
+
+
+func _push_car() -> void:
+	if not enabled or _car_busy:
+		return
+	var car: Dictionary = Store.get_value("car", {})
+	if not car.has("color") or not car.has("finish"):
+		car = {"color": "#e8402c", "finish": "gloss"}
+	var serial := _car_serial
+	_car_busy = true
+	var r: Dictionary = await call_rpc("seedline_save_car", {"color": str(car.color), "finish": str(car.finish)})
+	_car_busy = false
+	if r.ok and r.data is Dictionary:
+		Store.set_value("car_rev", int(r.data.get("rev", 0)))
+		Store.set_value("car_uid", _uid())
+		if serial == _car_serial:
+			Store.set_value("car_dirty", false)
+		else:
+			_car_timer.start()
+	elif not r.permanent:
+		_car_timer.start(30.0)
+
+
+func _uid() -> String:
+	var c := _claims(_token)
+	return str(c.get("uid", ""))
 
 
 func _hello() -> void:
@@ -258,15 +434,20 @@ func _take_session(r: Dictionary) -> bool:
 	return true
 
 
-func _token_valid(jwt: String) -> bool:
+func _claims(jwt: String) -> Dictionary:
 	var parts := jwt.split(".")
 	if parts.size() != 3:
-		return false
+		return {}
 	var b64 := parts[1].replace("-", "+").replace("_", "/")
 	while b64.length() % 4 != 0:
 		b64 += "="
 	var claims = JSON.parse_string(Marshalls.base64_to_raw(b64).get_string_from_utf8())
-	if not (claims is Dictionary) or not claims.has("exp"):
+	return claims if claims is Dictionary else {}
+
+
+func _token_valid(jwt: String) -> bool:
+	var claims := _claims(jwt)
+	if not claims.has("exp"):
 		return false
 	# renew a little early so a request never races the expiry
 	return float(claims.exp) - Time.get_unix_time_from_system() > 30.0

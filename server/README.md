@@ -20,6 +20,8 @@ The script copies the module into `/nakama/data/modules` of the container and re
 | `seedline_submit_run` | Validated, idempotent run submission. Writes the leaderboard record and updates the statistics. |
 | `seedline_track_info` | Top 10, the caller's rank and per-track statistics. |
 | `seedline_overview` | Global numbers: online, players, runs, sessions, tracks, active today. |
+| `seedline_get_car` | The account's saved car (color, finish) and its revision. |
+| `seedline_save_car` | Saves the car after validating the color and finish; last write wins. |
 
 - **Leaderboards**: one per track, id `track:<ENV>:<SEED>`, authoritative (clients cannot write scores), ascending, `best` operator, score in milliseconds. Created on the first accepted run.
 - **Track statistics** (storage `track_stats`, public read): runs, unique players, best time, total time, first and last play.

@@ -515,9 +515,46 @@ local function rpc_overview(context, _payload)
   })
 end
 
+--- Garage settings follow the account. Last write wins; the server clock orders the revisions.
+local CAR_FINISHES = { gloss = true, metal = true, matte = true }
+
+local function rpc_get_car(context, _payload)
+  local uid = require_user(context)
+  local doc = read_doc("profile", "car", uid)
+  if doc == nil then
+    return nk.json_encode({ car = nil, rev = 0 })
+  end
+  return nk.json_encode({ car = { color = doc.color, finish = doc.finish }, rev = doc.rev })
+end
+
+local function rpc_save_car(context, payload)
+  local uid = require_user(context)
+  local p = decode(payload)
+  if type(p.color) ~= "string" or not p.color:match("^#%x%x%x%x%x%x$") then
+    fail("invalid car color", E_INVALID)
+  end
+  if type(p.finish) ~= "string" or not CAR_FINISHES[p.finish] then
+    fail("invalid car finish", E_INVALID)
+  end
+  local rev = now_ms()
+  local ok = update_doc("profile", "car", uid, PERM_NONE, function(doc)
+    -- never move a revision backwards, even if the server clock does
+    if doc ~= nil and doc.rev ~= nil and doc.rev >= rev then
+      rev = doc.rev + 1
+    end
+    return { color = p.color:lower(), finish = p.finish, rev = rev }
+  end)
+  if not ok then
+    fail("could not save the car", E_INTERNAL)
+  end
+  return nk.json_encode({ rev = rev })
+end
+
 nk.register_rpc(rpc_hello, "seedline_hello")
 nk.register_rpc(rpc_submit_run, "seedline_submit_run")
 nk.register_rpc(rpc_track_info, "seedline_track_info")
 nk.register_rpc(rpc_overview, "seedline_overview")
+nk.register_rpc(rpc_get_car, "seedline_get_car")
+nk.register_rpc(rpc_save_car, "seedline_save_car")
 
 nk.logger_info("Seedline module loaded")
