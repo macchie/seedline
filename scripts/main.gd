@@ -3,6 +3,8 @@ extends Node3D
 
 const TURBO_COL := [0xffffff, 0x3fb4ff, 0xffa32a, 0xd25bff]
 const DRIFT_ENABLED := false
+# Extra pickup reach (m) on top of each pad's radius, roughly the car's half-length.
+const PAD_TOLERANCE := 2.2
 
 # --- persistent options (same keys and defaults as localStorage in the web build)
 var opts := {"gfx": "high", "sound": true, "side": "left", "sensV": 75, "stats": ""}
@@ -626,7 +628,8 @@ func collect_pads() -> void:
 			continue
 		var dx: float = car.x - p.x
 		var dz: float = car.z - p.z
-		if dx * dx + dz * dz > p.r * p.r or car.boost_amt >= CarSim.BOOST_CAP - 0.01:
+		var reach: float = p.r + PAD_TOLERANCE
+		if dx * dx + dz * dz > reach * reach or car.boost_amt >= CarSim.BOOST_CAP - 0.01:
 			continue
 		car.add_boost(100.0 if p.big else 12.0)
 		p.cd = int((10.0 if p.big else 4.0) / U.STEP)

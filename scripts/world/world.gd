@@ -772,35 +772,125 @@ func _build_start() -> void:
 	add_obstacle(t.px[0] - t.nx[0] * (HW + 1.6), t.pz[0] - t.nz[0] * (HW + 1.6), 1.0)
 
 
+## Chevron pointing +z, built from two slanted bars.
+func _chevron(tip: float, arm: float, thick: float, ang: float) -> Geo:
+	var g: Geo = null
+	for sgn: float in [1.0, -1.0]:
+		var bar := Geo.box(thick, 0.03, arm)
+		var th := PI - sgn * ang
+		bar.rotate_y(th)
+		bar.translate(sin(th) * arm / 2.0, 0.0, tip + cos(th) * arm / 2.0)
+		g = bar if g == null else g.merge(bar)
+	return g
+
+
+func _flat_ring(r: float, tube: float, segs: int) -> Mesh:
+	return Geo.torus(r, tube, 6, segs).rotate_x(PI / 2.0).to_mesh()
+
+
+func _flat_disc(r: float, segs: int) -> Mesh:
+	return Geo.circle(r, segs).rotate_x(-PI / 2.0).to_mesh()
+
+
+## Big pads: dark hex plate, glowing rim, three chasing chevrons, a spinning crystal in a gyro ring and a light beam.
+## Small pads: round plate, one chevron, a small bobbing shard.
 func _build_pads() -> void:
 	pads = []
-	var big_disc := Geo.cylinder(3.4, 3.4, 0.08, 28).to_mesh()
-	var small_disc := Geo.cylinder(2.0, 2.0, 0.08, 20).to_mesh()
-	var big_mat := Mats.basic({"color": 0xff8a1f, "opacity": 0.75, "blend": "add"})
-	var small_mat := Mats.basic({"color": 0x3fd0ff, "opacity": 0.7, "blend": "add"})
-	var rim_mat := Mats.basic({"color": 0xffffff, "opacity": 0.5, "blend": "add"})
-	var big_rim := Geo.cylinder(3.7, 3.7, 0.05, 28).to_mesh()
-	var small_rim := Geo.cylinder(2.3, 2.3, 0.05, 20).to_mesh()
+	if t.pads.is_empty():
+		return
+	var orange := 0xff8a1f
+	var cyan := 0x3fd0ff
+	var mats := {}
+	for kind in ["big", "small"]:
+		var col: int = orange if kind == "big" else cyan
+		var hot: int = 0xffc27a if kind == "big" else 0xb8f1ff
+		mats[kind] = {
+			"plate": Mats.toon({"color": 0x15181f, "emissive": U.hexc(col), "emissive_i": 0.22}),
+			"rim": Mats.basic({"color": col, "opacity": 0.95, "blend": "add"}),
+			"glow": Mats.basic({"color": col, "opacity": 0.28, "blend": "add"}),
+			"hot": Mats.basic({"color": hot, "opacity": 0.95, "blend": "add"}),
+			"beam": Mats.basic({"color": col, "opacity": 0.13, "blend": "add"}),
+			"chev": [Mats.basic({"color": hot, "opacity": 0.2, "blend": "add"}), Mats.basic({"color": hot, "opacity": 0.2, "blend": "add"}), Mats.basic({"color": hot, "opacity": 0.2, "blend": "add"})],
+		}
+	var big := {
+		"plate": Geo.cylinder(3.6, 3.75, 0.1, 6).to_mesh(),
+		"rim": _flat_ring(3.45, 0.11, 6),
+		"rim2": _flat_ring(2.55, 0.05, 40),
+		"glow": _flat_disc(3.3, 6),
+		"chev": [_chevron(-0.9, 1.5, 0.36, 0.95).to_mesh(), _chevron(0.35, 1.5, 0.36, 0.95).to_mesh(), _chevron(1.6, 1.5, 0.36, 0.95).to_mesh()],
+		"crystal": Geo.icosahedron(0.7, 0).scale_xyz(0.8, 1.45, 0.8).to_mesh(),
+		"gyro": Geo.torus(1.25, 0.05, 6, 36).to_mesh(),
+		"beam": Geo.cylinder(1.3, 2.3, 6.0, 20, 1, true).to_mesh(),
+	}
+	var small := {
+		"plate": Geo.cylinder(2.25, 2.35, 0.08, 24).to_mesh(),
+		"rim": _flat_ring(2.05, 0.08, 32),
+		"glow": _flat_disc(1.95, 24),
+		"chev": [_chevron(-0.3, 1.0, 0.28, 0.95).to_mesh()],
+		"crystal": Geo.icosahedron(0.32, 0).scale_xyz(0.8, 1.3, 0.8).to_mesh(),
+	}
 	for pd in t.pads:
 		var i: int = pd.i
-		var big: bool = pd.big
+		var is_big: bool = pd.big
 		var x: float = t.px[i] + t.nx[i] * pd.lat
 		var z: float = t.pz[i] + t.nz[i] * pd.lat
 		var node := Node3D.new()
 		node.position = Vector3(x, t.py[i] + 0.1, z)
-		node.add_child(mesh_node(big_rim if big else small_rim, rim_mat))
-		var d := mesh_node(big_disc if big else small_disc, big_mat if big else small_mat)
-		d.position.y = 0.03
-		node.add_child(d)
+		node.rotation.y = atan2(t.tx[i], t.tz[i])
+		var m: Dictionary = mats["big" if is_big else "small"]
+		var g: Dictionary = big if is_big else small
+		node.add_child(mesh_node(g.plate, m.plate))
+		var live := Node3D.new()
+		node.add_child(live)
+		var glow := mesh_node(g.glow, m.glow)
+		glow.position.y = 0.07
+		live.add_child(glow)
+		var rim := mesh_node(g.rim, m.rim)
+		rim.position.y = 0.09
+		live.add_child(rim)
+		if is_big:
+			var rim2 := mesh_node(g.rim2, m.rim)
+			rim2.position.y = 0.08
+			live.add_child(rim2)
+		for k in (g.chev as Array).size():
+			var c := mesh_node(g.chev[k], m.chev[k])
+			c.position.y = 0.09
+			live.add_child(c)
+		var crystal := mesh_node(g.crystal, m.hot)
+		var hover := 1.9 if is_big else 1.05
+		crystal.position.y = hover
+		live.add_child(crystal)
+		var gyro: MeshInstance3D = null
+		if is_big:
+			gyro = mesh_node(g.gyro, m.rim)
+			gyro.position.y = hover
+			live.add_child(gyro)
+			var beam := mesh_node(g.beam, m.beam)
+			beam.position.y = 3.1
+			live.add_child(beam)
 		add_child(node)
-		var entry := {"node": node, "x": x, "z": z, "big": big, "r": 3.6 if big else 2.4, "cd": 0, "disc": d}
+		var entry := {"node": node, "x": x, "z": z, "big": is_big, "r": 3.6 if is_big else 2.4, "cd": 0}
 		pads.append(entry)
 		var phase: float = float(i) * 0.37
 		anims.append(func(_dt: float, tt: float):
 			var cool: bool = entry.cd > 0
-			var pulse := 1.0 + 0.06 * sin(tt * 4.0 + phase)
-			node.scale = Vector3(pulse, 1.0, pulse)
-			node.visible = not cool)
+			live.visible = not cool
+			if cool:
+				return
+			crystal.position.y = hover + 0.18 * sin(tt * 2.4 + phase)
+			crystal.rotation.y = tt * 2.0 + phase
+			if gyro != null:
+				gyro.position.y = crystal.position.y
+				gyro.rotation = Vector3(tt * 1.3 + phase, tt * 0.9, 0.0)
+			var pulse := 1.0 + 0.03 * sin(tt * 5.0 + phase)
+			glow.scale = Vector3(pulse, 1.0, pulse))
+	# chevrons chase forward, shared by every pad of a kind
+	for kind in ["big", "small"]:
+		var cm: Array = mats[kind].chev
+		anims.append(func(_dt: float, tt: float):
+			for k in cm.size():
+				var ph := fposmod(tt * 1.6 - float(k) * 0.28, 1.0)
+				(cm[k] as ShaderMaterial).set_shader_parameter("opacity", 0.3 + 0.7 * pow(maxf(0.0, 1.0 - ph * 1.6), 1.5)))
 
 
 func _build_gates() -> void:
