@@ -64,7 +64,7 @@ func _init() -> void:
 	var smm := MultiMesh.new()
 	smm.transform_format = MultiMesh.TRANSFORM_3D
 	smm.mesh = World._quad()
-	smm.instance_count = 8
+	smm.instance_count = 14
 	sparks = MultiMeshInstance3D.new()
 	sparks.multimesh = smm
 	spark_mat = Mats.sprites({"blend": "add", "color": 0x3fa9ff, "size": Mats.points_size(1.6)})
@@ -252,7 +252,7 @@ func show_sparks(pts: Array, color: Color, size_px: float) -> void:
 	sparks.visible = true
 	spark_mat.set_shader_parameter("tint", Mats.v3(color))
 	spark_mat.set_shader_parameter("size", Mats.points_size(size_px))
-	for j in 8:
+	for j in mini(pts.size(), sparks.multimesh.instance_count):
 		sparks.multimesh.set_instance_transform(j, Transform3D(Basis.IDENTITY, pts[j]))
 
 

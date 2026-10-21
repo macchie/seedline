@@ -166,8 +166,6 @@ var split_box: Glass
 var split_lbl: Label
 var split_tw: Tween
 var hint: HBoxContainer
-var boost_rect: ColorRect
-var boost_tw: Tween
 var count_lbl: Label
 var count_tw: Tween
 
@@ -774,6 +772,21 @@ func _build_track_pane(parent: Control) -> void:
 
 func _build_garage_pane(parent: Control) -> void:
 	var p := _pane(parent, "garage")
+	var preview_note := glass(PANEL2, LINE, 12.0)
+	preview_note.pad(12, 9, 12, 9)
+	var preview_row := hbox(8)
+	var preview_dot := dot(accent, 8)
+	preview_dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	preview_row.add_child(preview_dot)
+	var preview_text := vbox(2)
+	preview_text.add_child(L("Live car preview", "body", 700, 12, FG, false, 0.08, true))
+	var preview_caption := L("Paint and booster colors update instantly.", "body", 400, 11, DIM)
+	preview_caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	preview_caption.custom_minimum_size = Vector2(1, 0)
+	preview_text.add_child(preview_caption)
+	preview_row.add_child(preview_text)
+	preview_note.add_child(preview_row)
+	p.add_child(preview_note)
 	p.add_child(eyebrow("Paint"))
 	swatch_box = GridContainer.new()
 	swatch_box.columns = 5
@@ -1114,14 +1127,6 @@ func _build_hud() -> void:
 	hud.add_child(hint)
 	meter = BoostMeter.new()
 	hud.add_child(meter)
-	boost_rect = ColorRect.new()
-	boost_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-	boost_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var bm := ShaderMaterial.new()
-	bm.shader = load("res://shaders/boost_fx.gdshader")
-	boost_rect.material = bm
-	boost_rect.modulate.a = 0.0
-	hud.add_child(boost_rect)
 	count_lbl = L("", "display", 800, 150, FG, true)
 	count_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	count_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -1682,7 +1687,6 @@ func relayout() -> void:
 	count_lbl.size = Vector2(W, H)
 	count_lbl.position = Vector2.ZERO
 	count_lbl.pivot_offset = Vector2(W, H) / 2.0
-	(boost_rect.material as ShaderMaterial).set_shader_parameter("rect_size", Vector2(W, H))
 	_layout_pads(W, H, sl, sr, sb)
 	# modals
 	_layout_account(W, H, sl, sr, st, sb)
@@ -2524,16 +2528,6 @@ func count_flash(txt: String, go: bool) -> void:
 	var a := create_tween()
 	a.tween_property(count_lbl, "modulate:a", 1.0, 0.175)
 	a.tween_property(count_lbl, "modulate:a", 0.0, 0.525)
-
-
-func boost_fx(c: Color) -> void:
-	(boost_rect.material as ShaderMaterial).set_shader_parameter("glow", c)
-	if boost_tw:
-		boost_tw.kill()
-	boost_tw = create_tween()
-	boost_tw.tween_property(boost_rect, "modulate:a", 0.55, 0.04)
-	boost_tw.tween_interval(0.1)
-	boost_tw.tween_property(boost_rect, "modulate:a", 0.0, 0.45)
 
 
 func toast(s: String) -> void:

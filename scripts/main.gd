@@ -1112,13 +1112,15 @@ func _update_car_visuals(dt: float, x: float, z: float, h: float, speed: float) 
 	body.scale.y = U.lerpf2(body.scale.y, 1.1 if car.hop_t > 0.12 else (0.9 if car.hop_t > 0.0 else 1.0), 0.35)
 	var lin := last_step_input
 	body.rotation.x = U.lerpf2(body.rotation.x, (0.035 if (lin.brake and not car.drift and car.vf > 2.0) else 0.0) - (0.025 if (lin.gas and speed < 40.0) else 0.0) - (0.03 if car.is_boosting() else 0.0), 0.12)
-	var k := 1.0 if car.is_boosting() else (0.75 if (lin.gas and state != "menu") else 0.35)
-	var ec := (car_v.boost_col if car.is_boosting() else car_v.glow_col) * k
+	var garage_preview := state == "menu" and menu_tab == "garage"
+	var boosting_visual := car.is_boosting() or garage_preview
+	var k := 1.55 if car.is_boosting() else (1.25 if garage_preview else (0.75 if (lin.gas and state != "menu") else 0.35))
+	var ec := (car_v.boost_col if boosting_visual else car_v.glow_col) * k
 	ec.a = 1.0
 	car_v.exhaust_m.set_shader_parameter("color", Mats.v3(ec))
 	if car_v.ex_glow:
 		car_v.ex_glow_m.set_shader_parameter("tint", Mats.v3(ec))
-		var sc := (2.4 if car.is_boosting() else (1.4 if lin.gas else 0.9)) * (0.9 + randf() * 0.2)
+		var sc := (4.0 if car.is_boosting() else (3.3 if garage_preview else (1.4 if lin.gas else 0.9))) * (0.9 + randf() * 0.2)
 		car_v.ex_glow_m.set_shader_parameter("size", sc)
 	var L := 1.0 if env.get("dark", false) else 0.0
 	car_v.tail_m.set_shader_parameter("color", Mats.v3(U.hexc(0xff2a2a if (lin.brake and state != "menu") else (0xd01818 if L > 0.3 else 0x7a0d0d))))
@@ -1197,17 +1199,17 @@ func _update_effects(dt: float, x: float, z: float, h: float, speed: float) -> v
 	# sparks while a mini-turbo charges, flame while boosting
 	if moving and car.drift and car.level > 0:
 		var pts: Array = []
-		for j in 8:
+		for j in 14:
 			var s2 := 1.0 if j % 2 == 1 else -1.0
 			pts.append(Vector3(x + rxx * s2 * 1.15 - fxx * 1.7 + (randf() - 0.5) * 0.8, 0.3 + randf() * 0.6 + car.y, z + rzz * s2 * 1.15 - fzz * 1.7 + (randf() - 0.5) * 0.8))
 		fx.show_sparks(pts, car_v.boost_col, 1.2 + randf() * 1.3 + car.level * 0.35)
-	elif moving and car.is_boosting():
+	elif (moving and car.is_boosting()) or (state == "menu" and menu_tab == "garage"):
 		var pts2: Array = []
-		for j in 8:
-			var s3 := 0.45 if j % 2 == 1 else -0.45
-			var b := 2.4 + randf() * 1.6
+		for j in 14:
+			var s3 := 0.65 if j % 2 == 1 else -0.65
+			var b := 3.0 + randf() * 2.2
 			pts2.append(Vector3(x + rxx * s3 - fxx * b, 0.6 + randf() * 0.3 + car.y, z + rzz * s3 - fzz * b))
-		fx.show_sparks(pts2, car_v.boost_col, 1.8 + randf() * 1.6)
+		fx.show_sparks(pts2, car_v.boost_col, 3.2 + randf() * 1.4)
 	else:
 		fx.hide_sparks()
 	if car.level_up != 0:
@@ -1216,7 +1218,6 @@ func _update_effects(dt: float, x: float, z: float, h: float, speed: float) -> v
 	if car.turbo != 0:
 		sfx.whoosh()
 		haptic(18)
-		ui.boost_fx(car_v.boost_col)
 		car.turbo = 0
 	if car.is_boosting() and moving and randf() < 0.5:
 		fx.puff(x - fxx * 2.6, 0.6 + car.y, z - fzz * 2.6, -car.vx * 0.3, -car.vz * 0.3, 1.1, 0.45)
