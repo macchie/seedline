@@ -48,6 +48,22 @@ var tab_scroll: ScrollContainer
 var seed_in: LineEdit
 var medals_box: VBoxContainer
 var lb_box: VBoxContainer
+var lb_group: VBoxContainer
+var lb_panel: Glass
+var lb_panel_box: VBoxContainer
+var lb_panel_title: Label
+var lb_split := false
+var act_row: HBoxContainer
+var seed_row: HBoxContainer
+var th_row: HBoxContainer
+var fav_title: Label
+var fav_cap: Label
+var rand_cap: Label
+var name_base := 34.0
+var tabs_box: Glass
+var btn_rand: Tap
+var panes_box: VBoxContainer
+var lb_eyebrow: Label
 var lb_stats: Label
 var online_lbl: Label
 var name_in: LineEdit
@@ -61,6 +77,16 @@ var fav_empty: Label
 var sens_slider: HSlider
 var sens_out: Label
 var opt_segs := {}
+var pad_boost: Tap
+var bind_dev := "kb"
+var bind_dev_btns: Array = []
+var bind_rows: VBoxContainer
+var bind_btns := {}
+var bind_note: Label
+var _rebind := {}
+var _rebind_t := 0
+var boost_l: Label
+var meter: BoostMeter
 var btn_play: Tap
 var custom_swatch: Tap
 var color_popup: PopupPanel
@@ -186,6 +212,35 @@ func icon_btn(kind: String) -> Array:
 	return [b, ic]
 
 
+## Labeled button: icon, title and a one-line caption that explains what it does. Returns [tap, icon, title, caption].
+func _action_btn(kind: String, title: String, caption: String, tip: String) -> Array:
+	var b := tap(PANEL, LINE, 12.0, 2.5)
+	b.custom_minimum_size = Vector2(0, 46)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.tooltip_text = tip
+	b.pad(10, 4, 8, 4)
+	var row := hbox(8)
+	var ic := Icon.new(kind, 20)
+	ic.color = FG
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(ic)
+	var col := vbox(0)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var t := L(title, "body", 700, 12, FG, false, 0.04, true)
+	t.clip_text = true
+	t.custom_minimum_size = Vector2(1, 0)
+	var c := L(caption, "body", 400, 10, DIM)
+	c.clip_text = true
+	c.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	c.custom_minimum_size = Vector2(1, 0)
+	col.add_child(t)
+	col.add_child(c)
+	row.add_child(col)
+	b.add_child(row)
+	return [b, ic, t, c]
+
+
 func eyebrow(text: String) -> Label:
 	return L(text, "body", 600, 11, DIM, false, 0.16, true)
 
@@ -272,6 +327,7 @@ func _ready() -> void:
 	_build_modals()
 	_build_overlays()
 	resized.connect(relayout)
+	Input.joy_connection_changed.connect(func(_d, _c): refresh_binds())
 	relayout()
 	call_deferred("focus_default")
 
@@ -445,6 +501,19 @@ func _build_menu() -> void:
 	ic_sound = sb[1]
 	btn_sound.pressed.connect(func(): game.toggle_sound())
 	mtop.add_child(btn_sound)
+	# desktop-only side panel for the track leaderboard
+	lb_panel = glass(Color(11 / 255.0, 14 / 255.0, 20 / 255.0, 0.78), LINE, 18.0, 3.5)
+	lb_panel.fill_bot = Color(9 / 255.0, 11 / 255.0, 16 / 255.0, 0.96)
+	lb_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	lb_panel.clip_contents = true
+	lb_panel.pad(18, 16, 18, 16)
+	lb_panel.visible = false
+	lb_panel_box = vbox(10)
+	lb_panel_title = L("Track leaderboard", "display", 800, 22, FG, true, 0.04, true)
+	lb_panel_box.add_child(lb_panel_title)
+	lb_panel_box.add_child(L("Fastest online times on this exact seed.", "body", 400, 12, DIM))
+	lb_panel.add_child(lb_panel_box)
+	mtop.add_child(lb_panel)
 	# sheet
 	sheet = glass(Color(11 / 255.0, 14 / 255.0, 20 / 255.0, 0.78), LINE, 20.0, 3.5)
 	sheet.fill_bot = Color(9 / 255.0, 11 / 255.0, 16 / 255.0, 0.96)
@@ -457,51 +526,71 @@ func _build_menu() -> void:
 	# track head
 	trackhead = vbox(8)
 	var throw := hbox(12)
+	th_row = throw
 	var thtext := vbox(6)
 	thtext.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	thtext.alignment = BoxContainer.ALIGNMENT_CENTER
 	env_lbl = eyebrow("Canyon")
+	env_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	env_lbl.custom_minimum_size = Vector2(1, 0)
 	name_lbl = L("Track", "display", 800, 34, FG, true, 0.005, true)
 	name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	name_lbl.add_theme_constant_override("line_spacing", -8)
+	name_lbl.custom_minimum_size = Vector2(1, 0)
+	name_lbl.max_lines_visible = 3
+	name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	thtext.add_child(env_lbl)
 	thtext.add_child(name_lbl)
 	throw.add_child(thtext)
 	prev_box = glass(Color(0, 0, 0, 0.25), LINE, 12.0)
+	prev_box.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	prev_map = MapView.new()
 	prev_map.preview = true
 	prev_box.add_child(prev_map)
 	throw.add_child(prev_box)
 	trackhead.add_child(throw)
 	var seedrow := hbox(8)
+	seed_row = seedrow
 	var chip := tap(PANEL2, Color(1, 1, 1, 0.22), 12.0)
 	chip.dash = 6.0
 	chip.custom_minimum_size = Vector2(0, 42)
 	chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	chip.pad(12, 0, 12, 0)
+	chip.tooltip_text = "Copy this track's seed. Share it so others can race the exact same track."
 	var chiprow := hbox(8)
+	var sl0 := L("Seed", "body", 600, 10, DIM, false, 0.14, true)
+	sl0.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	chiprow.add_child(sl0)
 	seed_lbl = L("—", "mono", 700, 15, FG, false, 0.06)
 	seed_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	seed_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	seed_lbl.clip_text = true
+	seed_lbl.custom_minimum_size = Vector2(1, 0)
 	chiprow.add_child(seed_lbl)
-	var copy := L("Copy", "body", 600, 10, DIM, false, 0.14, true)
+	var copy := L("Tap to copy", "body", 600, 10, DIM, false, 0.14, true)
 	copy.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	chiprow.add_child(copy)
 	chip.add_child(chiprow)
 	chip.pressed.connect(func(): game.copy_seed())
 	seedrow.add_child(chip)
-	var fb := icon_btn("star")
+	trackhead.add_child(seedrow)
+	act_row = hbox(8)
+	var fb := _action_btn("star", "Save track", "Add to Saved tab", "Save this track (with your best time) to the Saved tab so you can come back to it.")
 	btn_fav = fb[0]
 	ic_fav = fb[1]
+	fav_title = fb[2]
+	fav_cap = fb[3]
 	btn_fav.pressed.connect(func(): game.toggle_fav())
-	seedrow.add_child(btn_fav)
-	var nb := icon_btn("dice")
+	act_row.add_child(btn_fav)
+	var nb := _action_btn("dice", "Random track", "Roll a new seed", "Generate a brand new random track.")
+	rand_cap = nb[3]
+	btn_rand = nb[0]
 	nb[0].pressed.connect(func(): game.new_random_track())
-	seedrow.add_child(nb[0])
-	trackhead.add_child(seedrow)
+	act_row.add_child(nb[0])
+	trackhead.add_child(act_row)
 	sheet_box.add_child(trackhead)
 	# tabs
 	var tbox := glass(PANEL2, Color(0, 0, 0, 0), 12.0)
+	tabs_box = tbox
 	tbox.pad(4, 4, 4, 4)
 	var trow := hbox(4)
 	tbox.add_child(trow)
@@ -534,7 +623,7 @@ func _build_menu() -> void:
 	tab_scroll.get_v_scroll_bar().add_theme_stylebox_override("grabber_pressed", thin)
 	tab_scroll.get_v_scroll_bar().add_theme_stylebox_override("scroll", StyleBoxEmpty.new())
 	sheet_box.add_child(tab_scroll)
-	var panes_box := vbox(0)
+	panes_box = vbox(0)
 	panes_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tab_scroll.add_child(panes_box)
 	_build_track_pane(panes_box)
@@ -614,12 +703,15 @@ func _build_track_pane(parent: Control) -> void:
 	var lb_head := hbox(8)
 	var lbe := eyebrow("Leaderboard")
 	lbe.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lb_eyebrow = lbe
 	lb_head.add_child(lbe)
 	lb_stats = L("", "body", 600, 10, DIM, false, 0.12, true)
 	lb_head.add_child(lb_stats)
-	p.add_child(lb_head)
 	lb_box = vbox(2)
-	p.add_child(lb_box)
+	lb_group = vbox(6)
+	lb_group.add_child(lb_head)
+	lb_group.add_child(lb_box)
+	p.add_child(lb_group)
 	render_leaderboard(null)
 
 
@@ -724,29 +816,51 @@ func _build_options_pane(parent: Control) -> void:
 		o.add_child(s[0])
 		p.add_child(o)
 	var o2 := vbox(6)
-	o2.add_child(eyebrow("How to drive"))
-	var keys := GridContainer.new()
-	keys.columns = 2
-	keys.add_theme_constant_override("h_separation", 12)
-	keys.add_theme_constant_override("v_separation", 6)
-	keys.mouse_filter = Control.MOUSE_FILTER_PASS
-	for kv in [["↑ / W", "Accelerate · tap right before GO for a perfect start"],
-			["← → / A D", "Steer"], ["↓ / S", "Brake"], ["Backspace", "Respawn at last checkpoint"], ["R · Esc", "Restart · pause"],
-			["Touch", "Steer with the left half · GAS and BRAKE on the right"],
-			["Pad", "D-pad / left stick navigate · Cross / A select · Circle / B back · R2 / RT gas · L2 / LT brake · left stick steer · Triangle / Y respawn · Options / Start pause"]]:
-		var kb := glass(PANEL2, LINE, 6.0)
-		kb.pad(6, 3, 6, 3)
-		kb.add_child(L(kv[0], "mono", 700, 11, FG))
-		kb.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-		kb.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		keys.add_child(kb)
-		var d := L(kv[1], "body", 400, 13, DIM)
-		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		d.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		d.custom_minimum_size = Vector2(120, 0)
-		keys.add_child(d)
-	o2.add_child(keys)
+	o2.add_child(eyebrow("Controls"))
+	var ds := seg([["kb", "Keyboard"], ["pad", "Gamepad"]], func(v): _set_bind_device(v))
+	bind_dev_btns = ds[1]
+	o2.add_child(ds[0])
+	bind_rows = vbox(4)
+	for a in Bindings.visible_actions(game.DRIFT_ENABLED):
+		var id: String = a[0]
+		var row := hbox(6)
+		var nm := L(a[1], "body", 500, 13, FG)
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		nm.clip_text = true
+		nm.custom_minimum_size = Vector2(60, 0)
+		row.add_child(nm)
+		var btns: Array = []
+		for slot in 2:
+			var b := tap(PANEL2, LINE, 8.0)
+			b.custom_minimum_size = Vector2(112, 34)
+			var bl := L("—", "mono", 700, 11, FG)
+			bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			b.add_child(center(bl))
+			b.set_meta("lbl", bl)
+			var sl := slot
+			b.pressed.connect(func(): _begin_rebind(id, sl))
+			row.add_child(b)
+			btns.append(b)
+		bind_btns[id] = btns
+		bind_rows.add_child(row)
+	o2.add_child(bind_rows)
+	var reset := tap(PANEL2, LINE, 10.0)
+	reset.custom_minimum_size = Vector2(0, 36)
+	var rl2 := L("Reset to defaults", "body", 600, 12, FG, false, 0.06, true)
+	rl2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	reset.add_child(center(rl2))
+	reset.pressed.connect(func():
+		_cancel_rebind()
+		Bindings.reset_device(bind_dev)
+		refresh_binds())
+	o2.add_child(reset)
+	bind_note = L("", "body", 400, 12, DIM)
+	bind_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	bind_note.custom_minimum_size = Vector2(120, 0)
+	o2.add_child(bind_note)
 	p.add_child(o2)
+	_set_bind_device("kb")
 	var o3 := vbox(6)
 	o3.add_child(eyebrow("Online racer name"))
 	name_in = LineEdit.new()
@@ -841,6 +955,12 @@ func _build_hud() -> void:
 	gas_l = L("GAS", "display", 800, 15, accent, true, 0.08)
 	pad_gas.add_child(center(gas_l))
 	pads.add_child(pad_gas)
+	pad_boost = tap(Color(10 / 255.0, 13 / 255.0, 19 / 255.0, 0.42), Color("#ff9a3c"), 22.0, 2.0)
+	pad_boost.border_w = 1.5
+	pad_boost.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	boost_l = L("BOOST", "display", 800, 14, Color("#ff9a3c"), true, 0.08)
+	pad_boost.add_child(center(boost_l))
+	pads.add_child(pad_boost)
 	tip_l = L("Slide left ↔ right\nanywhere on this half", "body", 600, 11, Color(1, 1, 1, 0.8), false, 0.12, true)
 	tip_r = L("Gas · brake\nslide between them", "body", 600, 11, Color(1, 1, 1, 0.8), false, 0.12, true)
 	for t in [tip_l, tip_r]:
@@ -896,17 +1016,10 @@ func _build_hud() -> void:
 	hud.add_child(clock)
 	# keyboard hints
 	hint = hbox(14)
-	for h in [["⌫", "Respawn"], ["R", "Restart"], ["Esc", "Pause"]]:
-		var row := hbox(4)
-		var k := glass(PANEL, LINE, 5.0)
-		k.pad(5, 2, 5, 2)
-		k.add_child(L(h[0], "mono", 700, 11, FG))
-		row.add_child(k)
-		var t := L(h[1], "body", 500, 12, Color(1, 1, 1, 0.6))
-		t.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		row.add_child(t)
-		hint.add_child(row)
+	refresh_hint()
 	hud.add_child(hint)
+	meter = BoostMeter.new()
+	hud.add_child(meter)
 	boost_rect = ColorRect.new()
 	boost_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	boost_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1104,8 +1217,27 @@ func relayout() -> void:
 	# sheet
 	var name_size := clampf(7.4 * vw, 26.0, 40.0)
 	var pm := clampf(21.0 * vw, 72.0, 96.0)
+	if landscape_short:
+		name_size = 24.0
+		pm = 60.0
 	var rail := landscape_short or desktop
 	trackhead.visible = not garage or rail
+	# on phones the track head scrolls with the tab content so the body keeps a usable height
+	var head_scroll := not desktop
+	var head_iw := (W - sl - sr) if not landscape_short else (minf(360.0, 0.46 * W) - 32.0)
+	name_base = name_size
+	prev_box.custom_minimum_size = Vector2(pm, pm)
+	prev_map.custom_minimum_size = Vector2(pm, pm)
+	for c in [fav_cap, rand_cap]:
+		c.visible = not landscape_short
+	for ab in [btn_fav, btn_rand]:
+		ab.custom_minimum_size.y = 36.0 if landscape_short else 46.0
+	seed_row.get_child(0).custom_minimum_size.y = 36.0 if landscape_short else 42.0
+	_place_head(head_scroll)
+	if head_scroll:
+		trackhead.custom_minimum_size = Vector2(0, _trackhead_height(head_iw - 6.0))
+	else:
+		trackhead.custom_minimum_size = Vector2.ZERO
 	if desktop:
 		sheet.pad(18, 18, 18, 18)
 		sheet.radius = Vector4(18, 18, 18, 18)
@@ -1130,13 +1262,11 @@ func relayout() -> void:
 		var h := minf(maxh, content + 24.0 + sb)
 		sheet.position = Vector2(0, H - h)
 		sheet.size = Vector2(W, h)
-	restyle(name_lbl, name_size)
-	prev_box.custom_minimum_size = Vector2(pm, pm)
-	prev_map.custom_minimum_size = Vector2(pm, pm)
 	_layout_sheet_inner()
 	sheet._sync()
 	if not menu_on:
 		_apply_menu_hidden()
+	_layout_lb_panel(W, H, st, sr, desktop and W >= 1100.0, desktop and W >= 1100.0 and not garage)
 	# hud
 	top_l.position = Vector2(sl, st + 12.0)
 	mini_box.size = Vector2(112, 112)
@@ -1148,6 +1278,11 @@ func relayout() -> void:
 	hint.size = hint.get_combined_minimum_size()
 	hint.position = Vector2(sl, H - sb - 16.0 - hint.size.y)
 	hint.visible = not touch
+	pad_boost.visible = touch
+	if not touch:
+		var ms := clampf(0.14 * minf(W, H), 84.0, 120.0)
+		meter.size = Vector2(ms, ms)
+		meter.position = Vector2(W - sr - ms - 16.0, H - sb - ms - 16.0)
 	restyle(count_lbl, clampf(30.0 * vw, 110.0, 190.0))
 	count_lbl.size = Vector2(W, H)
 	count_lbl.position = Vector2.ZERO
@@ -1206,13 +1341,48 @@ func _layout_sheet_inner() -> void:
 
 
 ## The track head's height with the name wrapped at the width it will get (labels measure lazily)
+func _place_head(in_scroll: bool) -> void:
+	var target: Control = panes_box if in_scroll else sheet_box
+	if trackhead.get_parent() == target:
+		return
+	trackhead.get_parent().remove_child(trackhead)
+	target.add_child(trackhead)
+	target.move_child(trackhead, 0)
+
+
 func _trackhead_height(iw: float) -> float:
 	var pm := prev_box.custom_minimum_size.x
 	var text_w := maxf(40.0, iw - pm - 12.0)
+	env_lbl.size = Vector2(text_w, env_lbl.size.y)
+	_fit_name(text_w)
 	name_lbl.size = Vector2(text_w, name_lbl.size.y)
+	var env_h := env_lbl.get_minimum_size().y
 	var name_h := name_lbl.get_minimum_size().y
-	var top := maxf(env_lbl.get_minimum_size().y + 6.0 + name_h, pm)
-	return top + 8.0 + 42.0
+	var top := maxf(env_h + 6.0 + name_h, pm)
+	th_row.custom_minimum_size.y = top
+	return top + 8.0 + seed_row.get_combined_minimum_size().y + 8.0 + act_row.get_combined_minimum_size().y
+
+
+## Shrink the track name until its longest word fits and it takes at most two lines.
+func _fit_name(text_w: float) -> void:
+	var font := name_lbl.get_theme_font("font")
+	var txt := name_lbl.text.to_upper()
+	var avail := text_w * 0.95
+	var sz := int(round(name_base))
+	while sz > 16:
+		var ok := true
+		for w in txt.split(" ", false):
+			if font.get_string_size(w, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x > avail:
+				ok = false
+				break
+		if ok:
+			var h := font.get_multiline_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, avail, sz).y
+			ok = h <= font.get_height(sz) * 2.05
+		if ok:
+			break
+		sz -= 1
+	restyle(name_lbl, sz)
+	name_lbl.add_theme_constant_override("line_spacing", -int(sz * 0.2))
 
 
 func _sheet_content_height(inner_w: float) -> float:
@@ -1226,11 +1396,44 @@ func _sheet_content_height(inner_w: float) -> float:
 			var p: Control = panes[game.menu_tab]
 			p.size.x = inner_w
 			h += p.get_combined_minimum_size().y
+			if trackhead.get_parent() == panes_box and trackhead.visible:
+				h += trackhead.custom_minimum_size.y + 12.0
 		elif c == trackhead:
 			h += _trackhead_height(inner_w)
 		else:
 			h += c.get_combined_minimum_size().y
 	return h + 10.0 * maxf(0.0, n - 1)
+
+
+## On wide desktop windows the leaderboard leaves the Track tab and lives in its own panel on the right.
+func right_panel_width() -> float:
+	return lb_panel.size.x + 16.0 if lb_panel.visible else 0.0
+
+
+func _layout_lb_panel(W: float, H: float, st: float, sr: float, wide: bool, show: bool) -> void:
+	var split: bool = wide
+	if split != lb_split:
+		lb_split = split
+		lb_group.get_parent().remove_child(lb_group)
+		if split:
+			lb_panel_box.add_child(lb_group)
+		else:
+			var tp: VBoxContainer = panes["track"]
+			tp.add_child(lb_group)
+	lb_eyebrow.visible = not split
+	lb_stats.size_flags_horizontal = Control.SIZE_EXPAND_FILL if split else Control.SIZE_SHRINK_BEGIN
+	lb_panel.visible = show
+	if not show:
+		return
+	var w := clampf(W * 0.26, 300.0, 380.0)
+	var top := st + 92.0
+	lb_panel.position = Vector2(W - sr - w, top)
+	lb_panel_title.text = "Track leaderboard".to_upper()
+	var avail := H - top - 24.0
+	lb_panel.size = Vector2(w, w)
+	var need := lb_panel_box.get_combined_minimum_size().y + 32.0
+	lb_panel.size = Vector2(w, clampf(need, 160.0, avail))
+	lb_panel._sync()
 
 
 func _layout_pads(W: float, H: float, sl: float, sr: float, sb: float) -> void:
@@ -1256,6 +1459,15 @@ func _layout_pads(W: float, H: float, sl: float, sr: float, sb: float) -> void:
 	else:
 		pad_gas.position = Vector2(W - sr - gw, by - gh)
 		pad_brake.position = Vector2(W - sr - gw - 8.0 - bw, by - bh)
+	var boh := clampf(11.0 * vw, 56.0, 72.0)
+	pad_boost.size = Vector2(gw, boh)
+	pad_boost.position = Vector2(pad_gas.position.x, pad_gas.position.y - 10.0 - boh)
+	pad_boost.pivot_offset = pad_boost.size / 2.0
+	pad_boost._sync()
+	var msz := clampf(20.0 * vw, 70.0, 92.0)
+	if touch:
+		meter.size = Vector2(msz, msz)
+		meter.position = Vector2(pad_brake.position.x + (bw - msz) / 2.0, pad_brake.position.y - 8.0 - msz)
 	pad_brake.pivot_offset = pad_brake.size / 2.0
 	pad_gas.pivot_offset = pad_gas.size / 2.0
 	pad_brake._sync()
@@ -1271,13 +1483,13 @@ func _layout_pads(W: float, H: float, sl: float, sr: float, sb: float) -> void:
 		tip_l.size.x = W - sr - W / 2.0
 		tip_l.position = Vector2(W / 2.0, H - sb - 20.0 - wsz - 18.0 - tip_l.size.y)
 		tip_r.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		tip_r.position = Vector2(sl, H - sb - 18.0 - gh - 14.0 - tip_r.size.y)
+		tip_r.position = Vector2(sl, H - sb - 18.0 - gh - 24.0 - boh - tip_r.size.y)
 	else:
 		tip_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		tip_l.size.x = W / 2.0 - sl
 		tip_l.position = Vector2(sl, H - sb - 20.0 - wsz - 18.0 - tip_l.size.y)
 		tip_r.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		tip_r.position = Vector2(W - sr - tip_r.size.x, H - sb - 18.0 - gh - 14.0 - tip_r.size.y)
+		tip_r.position = Vector2(W - sr - tip_r.size.x, H - sb - 18.0 - gh - 24.0 - boh - tip_r.size.y)
 
 
 ## Rect of the menu sheet in UI units (for the camera's view offset)
@@ -1338,6 +1550,8 @@ func sync_icons() -> void:
 	ic_fav.color = accent if fav else FG
 	ic_fav.filled = fav
 	ic_fav.queue_redraw()
+	fav_title.text = ("Saved" if fav else "Save track").to_upper()
+	fav_cap.text = "Tap to remove" if fav else "Add to Saved tab"
 	f_fav.text = ("Saved ★" if fav else "Save track").to_upper()
 
 
@@ -1625,10 +1839,14 @@ func set_touch(on: bool) -> void:
 	touch = on
 	pads.visible = hud.visible and touch
 	hint.visible = not touch
+	if is_node_ready():
+		refresh_hint()
+		relayout()
 
 
 func hud_sync(force: bool) -> void:
 	var g = game
+	meter.set_state(g.car.boost_amt, CarSim.BOOST_CAP, g.car.boost_held)
 	var t: float = 0.0
 	if g.state == "countdown":
 		t = 0.0
@@ -1652,6 +1870,115 @@ func hud_sync(force: bool) -> void:
 	if force or cs != clock.size:
 		clock.size = cs
 		clock.position.x = (size.x - clock.size.x) / 2.0
+
+
+func _set_bind_device(d: String) -> void:
+	bind_dev = d
+	_cancel_rebind()
+	set_seg(bind_dev_btns, d)
+	refresh_binds()
+
+
+func refresh_binds() -> void:
+	for id in bind_btns:
+		for slot in 2:
+			var b: Tap = bind_btns[id][slot]
+			var v = Bindings.get_slot(bind_dev, id, slot)
+			var txt: String = Bindings.key_label(v) if bind_dev == "kb" else Bindings.pad_label(v)
+			var listening: bool = _rebind.get("action", "") == id and _rebind.get("slot", -1) == slot
+			(b.get_meta("lbl") as Label).text = "Press…" if listening else txt
+			(b.get_meta("lbl") as Label).add_theme_color_override("font_color", accent if listening else FG)
+	if bind_dev == "kb":
+		bind_note.text = "Tap a slot, then press a key. Tap it again to clear. Esc cancels."
+	else:
+		bind_note.text = "Tap a slot, then press a button or move a stick or trigger. Menus always use D-pad / stick, A / Cross to select, B / Circle to go back."
+	refresh_hint()
+
+
+func _begin_rebind(action: String, slot: int) -> void:
+	if _rebind.get("action", "") == action and _rebind.get("slot", -1) == slot:
+		_apply_binding(0 if bind_dev == "kb" else "")
+		return
+	_rebind = {"action": action, "slot": slot, "dev": bind_dev}
+	_rebind_t = Time.get_ticks_msec()
+	refresh_binds()
+	var stamp := _rebind_t
+	get_tree().create_timer(6.0).timeout.connect(func():
+		if _rebind_t == stamp and not _rebind.is_empty():
+			_cancel_rebind())
+
+
+func rebind_active() -> bool:
+	return not _rebind.is_empty()
+
+
+func _cancel_rebind() -> void:
+	if _rebind.is_empty():
+		return
+	_rebind = {}
+	refresh_binds()
+
+
+func _apply_binding(value) -> void:
+	Bindings.set_slot(_rebind.dev, _rebind.action, _rebind.slot, value)
+	_rebind = {}
+	refresh_binds()
+
+
+## Called first for every input event while a slot is listening; returns true if the event was consumed.
+func capture_binding(ev: InputEvent) -> bool:
+	if Time.get_ticks_msec() - _rebind_t < 200:
+		return ev is InputEventKey or ev is InputEventJoypadButton or ev is InputEventJoypadMotion
+	if _rebind.dev == "kb":
+		if ev is InputEventKey:
+			if ev.pressed and not ev.echo:
+				if ev.keycode == KEY_ESCAPE:
+					_cancel_rebind()
+				else:
+					var code: int = ev.physical_keycode if ev.physical_keycode != 0 else ev.keycode
+					_apply_binding(code)
+			return true
+		return false
+	if ev is InputEventJoypadButton or ev is InputEventJoypadMotion:
+		var b := Bindings.pad_from_event(ev)
+		if b.begins_with("a:") and b.split(":")[1] in ["4", "5"] and b.ends_with("-"):
+			return true
+		if b != "":
+			_apply_binding(b)
+		return true
+	if ev is InputEventKey and ev.pressed and ev.keycode == KEY_ESCAPE:
+		_cancel_rebind()
+		return true
+	return false
+
+
+func refresh_hint() -> void:
+	for c in hint.get_children():
+		hint.remove_child(c)
+		c.queue_free()
+	var items := [["boost", "Boost"], ["respawn", "Respawn"], ["restart", "Restart"], ["pause", "Pause"]]
+	var pad_mode: bool = not Input.get_connected_joypads().is_empty() and not game.touch_ui
+	for h in items:
+		var label: String
+		if pad_mode:
+			label = Bindings.pad_label(Bindings.get_slot("pad", h[0], 0))
+			if label == "—":
+				label = Bindings.pad_label(Bindings.get_slot("pad", h[0], 1))
+		else:
+			label = Bindings.key_label(Bindings.get_slot("kb", h[0], 0))
+		if label == "—":
+			continue
+		var row := hbox(4)
+		var k := glass(PANEL, LINE, 5.0)
+		k.pad(5, 2, 5, 2)
+		k.add_child(L(label, "mono", 700, 11, FG))
+		row.add_child(k)
+		var t := L(h[1], "body", 500, 12, Color(1, 1, 1, 0.6))
+		t.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		row.add_child(t)
+		hint.add_child(row)
+	if is_node_ready() and hint.is_inside_tree():
+		hint.size = hint.get_combined_minimum_size()
 
 
 func show_split(d, t: float) -> void:
@@ -1794,7 +2121,7 @@ func set_stats(s: String) -> void:
 
 # ------------------------------------------------------------------ touch controls
 
-func sync_pedals(gas: bool, brake: bool) -> void:
+func sync_pedals(gas: bool, brake: bool, boost := false) -> void:
 	var dark := Color(10 / 255.0, 13 / 255.0, 19 / 255.0, 0.42)
 	pad_gas.fill_top = accent if gas else dark
 	pad_gas.fill_bot = pad_gas.fill_top
@@ -1808,6 +2135,13 @@ func sync_pedals(gas: bool, brake: bool) -> void:
 	brake_l1.add_theme_color_override("font_color", Color.WHITE if brake else Color("#ffb3ad"))
 	brake_l2.add_theme_color_override("font_color", Color(Color.WHITE if brake else Color("#ffb3ad"), 0.7))
 	pad_brake._sync()
+	var bo := Color("#ff9a3c")
+	pad_boost.fill_top = Color(bo, 0.7) if boost else dark
+	pad_boost.fill_bot = pad_boost.fill_top
+	pad_boost.border_col = bo
+	pad_boost.scale = Vector2(0.95, 0.95) if boost else Vector2.ONE
+	boost_l.add_theme_color_override("font_color", Color.BLACK if boost else bo)
+	pad_boost._sync()
 
 
 func set_wheel(disp: float, on: bool) -> void:
@@ -1842,16 +2176,19 @@ func init_tips() -> void:
 func _pads_input(ev: InputEvent) -> void:
 	if ev is InputEventScreenTouch:
 		if ev.pressed:
-			game.touch_down(ev.index, ev.position.x, _pedal_at(ev.position.x))
+			game.touch_down(ev.index, ev.position.x, _pedal_at(ev.position))
 		else:
 			game.touch_up(ev.index)
 		pads.accept_event()
 	elif ev is InputEventScreenDrag:
-		game.touch_move(ev.index, ev.position.x, _pedal_at(ev.position.x))
+		game.touch_move(ev.index, ev.position.x, _pedal_at(ev.position))
 		pads.accept_event()
 
 
-func _pedal_at(x: float) -> String:
+func _pedal_at(p: Vector2) -> String:
+	var br := Rect2(pad_boost.position, pad_boost.size).grow(8.0)
+	if br.has_point(p):
+		return "boost"
 	var gc := pad_gas.position.x + pad_gas.size.x / 2.0
 	var bc := pad_brake.position.x + pad_brake.size.x / 2.0
-	return "gas" if absf(x - gc) <= absf(x - bc) else "brake"
+	return "gas" if absf(p.x - gc) <= absf(p.x - bc) else "brake"

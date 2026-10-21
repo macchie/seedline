@@ -5,6 +5,9 @@ extends RefCounted
 const VMAX := 64.0
 const VMAX_OFF := 28.0
 const BOOST_MAX := 84.0
+const BOOST_CAP := 100.0
+const BOOST_START := BOOST_CAP * 2.0 / 3.0
+const BOOST_DRAIN := 33.4
 const ACCEL := 46.0
 const BRAKE := 54.0
 const COAST := 3.4
@@ -40,6 +43,8 @@ var turbo := 0
 var hop_t := 0.0
 var drift_latch := false
 var boost_t := 0.0
+var boost_amt := BOOST_START
+var boost_held := false
 var on_road := true
 var in_water := false
 var idx := 0
@@ -144,7 +149,10 @@ func step(dt: float, inp: Dictionary, env_grip: float) -> void:
 			level = 0
 	if boost_t > 0.0:
 		boost_t -= dt
-	var boosting := boost_t > 0.0
+	boost_held = inp.get("boost", false) and boost_amt > 0.0
+	if boost_held:
+		boost_amt = maxf(0.0, boost_amt - BOOST_DRAIN * dt)
+	var boosting := boost_t > 0.0 or boost_held
 	var a0slope := 9.8 * slope * 0.85 if slope != 0.0 else 0.0
 	var vmax := 11.0 if in_water else (BOOST_MAX if boosting else (VMAX if on_road else VMAX_OFF))
 	var a := 0.0
@@ -197,6 +205,14 @@ func step(dt: float, inp: Dictionary, env_grip: float) -> void:
 	h += w * dt
 	x += vx * dt
 	z += vz * dt
+
+
+func is_boosting() -> bool:
+	return boost_t > 0.0 or boost_held
+
+
+func add_boost(v: float) -> void:
+	boost_amt = minf(BOOST_CAP, boost_amt + v)
 
 
 func place(t: TrackData, i: int, back: int = 0) -> void:

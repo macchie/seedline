@@ -26,11 +26,17 @@ The first import takes a few seconds while Godot imports the fonts.
 - **Interface.** The menu sheet (Track, Garage, Saved and Options tabs), race HUD with minimap, splits and
   countdown, the pause and finish cards, toasts and the loading screen. The layout follows the same breakpoints:
   a bottom sheet on phones, a left rail on short landscape screens and on desktop.
-- **Controls.**
-  - Keyboard: arrows or WASD; Space, Shift or K to drift; Backspace to respawn; R or Enter to restart; Esc or P to
-    pause.
-  - Gamepad: RT or A for gas, LT or B for brake, RB, LB or X to drift, Y to respawn, Start to pause.
-  - Touch: the hidden-slider steering wheel plus the DRIFT/BRAKE and GAS pedals, with a left- or right-thumb option.
+- **Controls.** Every action is rebindable (two slots each, keyboard and gamepad) under Options → Controls, and the
+  bindings persist in `user://seedline.json`.
+  - Keyboard (defaults): arrows or WASD; Space or Shift to boost; Backspace to respawn; R or Enter to restart; Esc or P
+    to pause.
+  - Gamepad (defaults): RT gas, LT or B brake, left stick or D-pad steer, A / Cross boost, Y / Triangle respawn,
+    Start pause.
+  - Touch: the hidden-slider steering wheel plus the BOOST, BRAKE and GAS pads, with a left- or right-thumb option.
+- **Boost.** A Rocket-League-style gauge: 100 capacity, 2/3 full at the start of every run, drained while boost is held.
+  Big orange pads (+100, 10 s respawn) and small cyan pads (+12, 4 s respawn) are placed from the seed with their own
+  RNG stream, so the same seed always gives the same pads and the track itself is unchanged. Medal times are still
+  computed without boost.
 - **Saved data.** Options, paint, saved tracks, personal bests and ghosts are kept under the web build's keys, in
   `user://seedline.json`.
 - **Sound.** The synthesised engine, skid and wind loops, and the beeps, chimes, thuds, splashes and whooshes are

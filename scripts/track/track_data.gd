@@ -23,6 +23,7 @@ var complexity: float = 0.0
 var name: String = ""
 var cps := PackedInt32Array()
 var medals: Dictionary = {}
+var pads: Array = []   # {i: sample index, lat: lateral offset, big: bool}
 
 
 ## Tangents, normals and smoothed curvature from a resampled centreline (port of analyze()).

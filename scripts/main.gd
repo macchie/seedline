@@ -3,8 +3,6 @@ extends Node3D
 
 const TURBO_COL := [0xffffff, 0x3fb4ff, 0xffa32a, 0xd25bff]
 const DRIFT_ENABLED := false
-const KEYMAP := {KEY_UP: "gas", KEY_W: "gas", KEY_DOWN: "brake", KEY_S: "brake", KEY_SPACE: "drift", KEY_SHIFT: "drift", KEY_K: "drift",
-	KEY_LEFT: "left", KEY_A: "left", KEY_RIGHT: "right", KEY_D: "right"}
 
 # --- persistent options (same keys and defaults as localStorage in the web build)
 var opts := {"gfx": "high", "sound": true, "side": "left", "sensV": 75, "stats": ""}
@@ -53,8 +51,8 @@ var last_step_input := {"gas": false, "brake": false, "drift": false, "steer": 0
 var cd := {"gas": false, "blown": false, "boost": false}
 var paused_from := "race"
 var keys := {}
-var ts := {"steer_id": -1, "val": 0.0, "disp": 0.0, "pedal": {}, "gas": false, "brake": false}
-var pad_prev := {"y": false, "st": false}
+var ts := {"steer_id": -1, "val": 0.0, "disp": 0.0, "pedal": {}, "gas": false, "brake": false, "boost": false}
+var pad_prev := {}
 
 var acc := 0.0
 var sim_t := 0.0
@@ -334,11 +332,6 @@ func _unhandled_input(ev: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if ev is InputEventKey:
-		var k = KEYMAP.get(ev.physical_keycode if ev.physical_keycode != 0 else ev.keycode)
-		if k != null:
-			keys[k] = ev.pressed
-			if state != "menu":
-				get_viewport().set_input_as_handled()
 		if not ev.pressed or ev.echo:
 			return
 		var code: int = ev.keycode
@@ -347,16 +340,23 @@ func _unhandled_input(ev: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				start_race()
 			return
-		if code == KEY_BACKSPACE or code == KEY_DELETE:
+		for a in ["gas", "brake", "left", "right", "boost", "drift"]:
+			if Bindings.key_matches(ev, a):
+				get_viewport().set_input_as_handled()
+				return
+		if Bindings.key_matches(ev, "respawn"):
 			respawn()
-		elif code == KEY_R or ((code == KEY_ENTER or code == KEY_KP_ENTER) and state != "paused"):
+		elif Bindings.key_matches(ev, "restart") or ((code == KEY_ENTER or code == KEY_KP_ENTER) and state != "paused"):
 			if state != "paused":
 				restart(true)
-		elif code == KEY_ESCAPE or code == KEY_P:
+		elif Bindings.key_matches(ev, "pause") or code == KEY_ESCAPE:
 			toggle_pause()
 
 
 func _input(ev: InputEvent) -> void:
+	if ui.rebind_active() and ui.capture_binding(ev):
+		get_viewport().set_input_as_handled()
+		return
 	# a real touch switches the race HUD to touch controls (like the web build's first pointerdown)
 	if ev is InputEventScreenTouch and ev.pressed and not touch_ui:
 		touch_ui = true
@@ -422,18 +422,24 @@ func touch_up(id: int) -> void:
 func sync_pedals() -> void:
 	var g := false
 	var b := false
+	var bo := false
 	for p in ts.pedal.values():
 		if p == "gas":
 			g = true
+		elif p == "boost":
+			bo = true
 		else:
 			b = true
+	if bo and not ts.boost:
+		haptic(10)
+	ts.boost = bo
 	if b and not ts.brake:
 		haptic(12)
 	elif g and not ts.gas:
 		haptic(6)
 	ts.gas = g
 	ts.brake = b
-	ui.sync_pedals(g, b)
+	ui.sync_pedals(g, b, bo)
 	if g or b:
 		ui.hide_tip("R")
 
@@ -452,45 +458,47 @@ func haptic(ms: int) -> void:
 
 func read_input() -> Dictionary:
 	var analog := false
-	var gas: bool = keys.get("gas", false) or ts.gas
-	var brake: bool = keys.get("brake", false) or ts.brake
-	var drift: bool = keys.get("drift", false) or ts.brake
-	var steer := (1.0 if keys.get("right", false) else 0.0) - (1.0 if keys.get("left", false) else 0.0)
+	var gas: bool = keys.get("gas", false) or ts.gas or Bindings.key_held("gas")
+	var brake: bool = keys.get("brake", false) or ts.brake or Bindings.key_held("brake")
+	var boost: bool = keys.get("boost", false) or ts.boost or Bindings.key_held("boost")
+	var drift: bool = keys.get("drift", false) or ts.brake or Bindings.key_held("drift")
+	var left: bool = keys.get("left", false) or Bindings.key_held("left")
+	var right: bool = keys.get("right", false) or Bindings.key_held("right")
+	var steer := (1.0 if right else 0.0) - (1.0 if left else 0.0)
 	if ts.steer_id >= 0:
 		var a := maxf(0.0, absf(ts.val) - 0.04) / 0.96
 		steer = U.jsign(ts.val) * a
 		analog = true
-	var pads := Input.get_connected_joypads()
-	var steer_strength := 0.15
-	var pad_y := false
-	var pad_st := false
-	for pad in pads:
-		var device := int(pad)
-		var ax := Input.get_joy_axis(device, JOY_AXIS_LEFT_X)
-		if absf(ax) > steer_strength:
-			steer = U.clampf2(ax, -1.0, 1.0)
-			analog = true
-			steer_strength = absf(ax)
-		if Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > 0.3 or Input.is_joy_button_pressed(device, JOY_BUTTON_A):
-			gas = true
-		if Input.get_joy_axis(device, JOY_AXIS_TRIGGER_LEFT) > 0.3 or Input.is_joy_button_pressed(device, JOY_BUTTON_B):
-			brake = true
-		if Input.is_joy_button_pressed(device, JOY_BUTTON_RIGHT_SHOULDER) or Input.is_joy_button_pressed(device, JOY_BUTTON_LEFT_SHOULDER) or Input.is_joy_button_pressed(device, JOY_BUTTON_X):
-			drift = true
-		pad_y = pad_y or Input.is_joy_button_pressed(device, JOY_BUTTON_Y)
-		pad_st = pad_st or Input.is_joy_button_pressed(device, JOY_BUTTON_START)
-	if pad_y and not pad_prev.y:
-		respawn()
-	if pad_st and not pad_prev.st:
-		toggle_pause()
-	pad_prev = {"y": pad_y, "st": pad_st}
-	return {"gas": gas, "brake": brake, "drift": drift and DRIFT_ENABLED, "steer": steer, "analog": analog}
-
-
-func joypad_gas_pressed() -> bool:
+	var edge := {"respawn": false, "restart": false, "pause": false}
+	var steer_strength := 0.0
 	for pad in Input.get_connected_joypads():
 		var device := int(pad)
-		if Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > 0.3 or Input.is_joy_button_pressed(device, JOY_BUTTON_A):
+		gas = gas or Bindings.pad_pressed(device, "gas")
+		brake = brake or Bindings.pad_pressed(device, "brake")
+		boost = boost or Bindings.pad_pressed(device, "boost")
+		drift = drift or Bindings.pad_pressed(device, "drift")
+		var sv := Bindings.pad_value(device, "right") - Bindings.pad_value(device, "left")
+		if absf(sv) > maxf(steer_strength, 0.01):
+			steer = U.clampf2(sv, -1.0, 1.0)
+			steer_strength = absf(sv)
+			analog = analog or Bindings.pad_has_axis("left") or Bindings.pad_has_axis("right")
+		for a in edge:
+			edge[a] = edge[a] or Bindings.pad_pressed(device, a)
+	if edge.respawn and not pad_prev.get("respawn", false):
+		respawn()
+	if edge.restart and not pad_prev.get("restart", false):
+		restart(true)
+	if edge.pause and not pad_prev.get("pause", false):
+		toggle_pause()
+	pad_prev = edge
+	return {"gas": gas, "brake": brake, "boost": boost, "drift": drift and DRIFT_ENABLED, "steer": steer, "analog": analog}
+
+
+func gas_pressed() -> bool:
+	if keys.get("gas", false) or ts.gas or Bindings.key_held("gas"):
+		return true
+	for pad in Input.get_connected_joypads():
+		if Bindings.pad_pressed(int(pad), "gas"):
 			return true
 	return false
 
@@ -575,6 +583,8 @@ func physics_step() -> void:
 	car.step(U.STEP, inp, float(env.get("grip", 1.0)))
 	collide(car)
 	var prev := car.update_progress(track)
+	if racing:
+		collect_pads()
 	car.in_water = env.get("shore", false) and not car.on_road and world.terrain_h(car.x, car.z, absf(car.lat)) < -0.4
 	if not racing:
 		return
@@ -609,12 +619,30 @@ func physics_step() -> void:
 				ui.toast("Lap " + str(lap) + " / " + str(U.LAPS))
 
 
+func collect_pads() -> void:
+	for p in world.pads:
+		if p.cd > 0:
+			p.cd -= 1
+			continue
+		var dx: float = car.x - p.x
+		var dz: float = car.z - p.z
+		if dx * dx + dz * dz > p.r * p.r or car.boost_amt >= CarSim.BOOST_CAP - 0.01:
+			continue
+		car.add_boost(100.0 if p.big else 12.0)
+		p.cd = int((10.0 if p.big else 4.0) / U.STEP)
+		sfx.chime(p.big)
+		haptic(8)
+
+
 func restart(quick: bool) -> void:
 	if track == null:
 		return
 	ui.hide_finish()
 	ui.show_pause(false)
 	place_car_at(0, 4)
+	car.boost_amt = CarSim.BOOST_START
+	for p in world.pads:
+		p.cd = 0
 	race_steps = 0
 	lap = 1
 	next_cp = 0
@@ -630,7 +658,7 @@ func restart(quick: bool) -> void:
 	state = "countdown"
 	cd_t = 1.5 if quick else 2.25
 	cd_last = -1
-	cd.gas = keys.get("gas", false) or ts.gas
+	cd.gas = gas_pressed()
 	cd.blown = false
 	cd.boost = false
 	ui.clear_split()
@@ -914,7 +942,7 @@ func _process(delta: float) -> void:
 		return
 	if state == "countdown":
 		# start boost: first press of the gas inside the last third of a second before GO
-		var g: bool = keys.get("gas", false) or ts.gas or joypad_gas_pressed()
+		var g: bool = gas_pressed()
 		if g and not cd.gas:
 			if cd_t <= 0.34:
 				cd.boost = not cd.blown
@@ -974,8 +1002,8 @@ func _process(delta: float) -> void:
 	# audio
 	var lin := last_step_input
 	var active := state != "menu" and state != "paused"
-	var gas_now: bool = lin.gas or (state == "countdown" and (keys.get("gas", false) or ts.gas))
-	sfx.engine(speed, 1.0 if gas_now else 0.0, car.boost_t > 0.0, active)
+	var gas_now: bool = lin.gas or (state == "countdown" and gas_pressed())
+	sfx.engine(speed, 1.0 if gas_now else 0.0, car.is_boosting(), active)
 	var slip := absf(car.vl)
 	sfx.skid((U.clampf2((slip - 2.0) / 16.0, 0.05, 0.22) + (0.06 if car.drift else 0.0)) if (active and _skidding and car.on_road) else 0.0)
 	var wind := 0.0
@@ -1021,14 +1049,14 @@ func _update_car_visuals(dt: float, x: float, z: float, h: float, speed: float) 
 	body.rotation.y = U.lerpf2(body.rotation.y, U.jsign(car.w) * 0.42 if car.drift else U.clampf2(-car.vl * 0.012, -0.12, 0.12), 0.16)
 	body.scale.y = U.lerpf2(body.scale.y, 1.1 if car.hop_t > 0.12 else (0.9 if car.hop_t > 0.0 else 1.0), 0.35)
 	var lin := last_step_input
-	body.rotation.x = U.lerpf2(body.rotation.x, (0.035 if (lin.brake and not car.drift and car.vf > 2.0) else 0.0) - (0.025 if (lin.gas and speed < 40.0) else 0.0) - (0.03 if car.boost_t > 0.0 else 0.0), 0.12)
-	var k := 1.0 if car.boost_t > 0.0 else (0.75 if (lin.gas and state != "menu") else 0.35)
-	var ec := (U.hexc(0xffb35a) if car.boost_t > 0.0 else car_v.glow_col) * k
+	body.rotation.x = U.lerpf2(body.rotation.x, (0.035 if (lin.brake and not car.drift and car.vf > 2.0) else 0.0) - (0.025 if (lin.gas and speed < 40.0) else 0.0) - (0.03 if car.is_boosting() else 0.0), 0.12)
+	var k := 1.0 if car.is_boosting() else (0.75 if (lin.gas and state != "menu") else 0.35)
+	var ec := (U.hexc(0xffb35a) if car.is_boosting() else car_v.glow_col) * k
 	ec.a = 1.0
 	car_v.exhaust_m.set_shader_parameter("color", Mats.v3(ec))
 	if car_v.ex_glow:
 		car_v.ex_glow_m.set_shader_parameter("tint", Mats.v3(ec))
-		var sc := (2.4 if car.boost_t > 0.0 else (1.4 if lin.gas else 0.9)) * (0.9 + randf() * 0.2)
+		var sc := (2.4 if car.is_boosting() else (1.4 if lin.gas else 0.9)) * (0.9 + randf() * 0.2)
 		car_v.ex_glow_m.set_shader_parameter("size", sc)
 	var L := 1.0 if env.get("dark", false) else 0.0
 	car_v.tail_m.set_shader_parameter("color", Mats.v3(U.hexc(0xff2a2a if (lin.brake and state != "menu") else (0xd01818 if L > 0.3 else 0x7a0d0d))))
@@ -1111,7 +1139,7 @@ func _update_effects(dt: float, x: float, z: float, h: float, speed: float) -> v
 			var s2 := 1.0 if j % 2 == 1 else -1.0
 			pts.append(Vector3(x + rxx * s2 * 1.15 - fxx * 1.7 + (randf() - 0.5) * 0.8, 0.3 + randf() * 0.6 + car.y, z + rzz * s2 * 1.15 - fzz * 1.7 + (randf() - 0.5) * 0.8))
 		fx.show_sparks(pts, U.hexc(TURBO_COL[car.level]), 1.2 + randf() * 1.3 + car.level * 0.35)
-	elif moving and car.boost_t > 0.0:
+	elif moving and car.is_boosting():
 		var pts2: Array = []
 		for j in 8:
 			var s3 := 0.45 if j % 2 == 1 else -0.45
@@ -1128,7 +1156,7 @@ func _update_effects(dt: float, x: float, z: float, h: float, speed: float) -> v
 		haptic(18)
 		ui.boost_fx(U.hexc(TURBO_COL[car.turbo]))
 		car.turbo = 0
-	if car.boost_t > 0.0 and moving and randf() < 0.5:
+	if car.is_boosting() and moving and randf() < 0.5:
 		fx.puff(x - fxx * 2.6, 0.6 + car.y, z - fzz * 2.6, -car.vx * 0.3, -car.vz * 0.3, 1.1, 0.45)
 	var smoke := U.hexc(env.smoke)
 	var sc := smoke if car.on_road else U.hexc(env.gLow).lerp(smoke, 0.4)
@@ -1237,7 +1265,7 @@ func _update_camera(dt: float, x: float, z: float, h: float, speed: float) -> vo
 	var ff: float = cdist + float(env.fogFar) - 40.0
 	RenderingServer.global_shader_parameter_set("g_fog", Vector2(fn, ff))
 	ink_mat.set_shader_parameter("fogr", Vector2(fn, ff))
-	var fov := 46.0 + (7.0 if (car.boost_t > 0.0 and state != "menu") else 0.0) + U.clampf2((speed - 42.0) / 30.0, 0.0, 1.0) * 4.0
+	var fov := 46.0 + (7.0 if (car.is_boosting() and state != "menu") else 0.0) + U.clampf2((speed - 42.0) / 30.0, 0.0, 1.0) * 4.0
 	cam_fov = U.lerpf2(cam_fov, fov, 0.08)
 	cam.fov = cam_fov
 	# keep the menu's subject clear of the sheet (setViewOffset in the web build)
@@ -1248,7 +1276,7 @@ func _update_camera(dt: float, x: float, z: float, h: float, speed: float) -> vo
 		if r.position.x < 8.0 and r.size.x > W * 0.8:
 			oy = maxf(0.0, H - r.position.y) / 2.0
 		else:
-			ox = -minf(r.position.x + r.size.x, W * 0.6) / 2.0
+			ox = -(minf(r.position.x + r.size.x, W * 0.6) - ui.right_panel_width()) / 2.0
 		var px_to_m := 2.0 * cdist * tan(deg_to_rad(cam_fov) / 2.0) / maxf(H, 1.0)
 		cam.h_offset = ox * px_to_m
 		cam.v_offset = -oy * px_to_m

@@ -23,6 +23,7 @@ var river_d := 1e9      # side result of terrain_h (riverD)
 
 var anims: Array = []   # Callable(dt, tt)
 var emitters: Array = []
+var pads: Array = []    # {node, x, z, big, r, cd}
 var gates: Array = []   # {mesh, mat, flash, k}
 var water_mats: Array = []
 var ripples := PackedVector3Array()
@@ -453,6 +454,7 @@ func build(track: TrackData, env: Dictionary, touch: bool) -> void:
 	_build_road()
 	_build_start()
 	_build_gates()
+	_build_pads()
 	_build_bridges()
 	_build_river()
 	var props := Props.new(self)
@@ -768,6 +770,37 @@ func _build_start() -> void:
 	add_child(arch)
 	add_obstacle(t.px[0] + t.nx[0] * (HW + 1.6), t.pz[0] + t.nz[0] * (HW + 1.6), 1.0)
 	add_obstacle(t.px[0] - t.nx[0] * (HW + 1.6), t.pz[0] - t.nz[0] * (HW + 1.6), 1.0)
+
+
+func _build_pads() -> void:
+	pads = []
+	var big_disc := Geo.cylinder(3.4, 3.4, 0.08, 28).to_mesh()
+	var small_disc := Geo.cylinder(2.0, 2.0, 0.08, 20).to_mesh()
+	var big_mat := Mats.basic({"color": 0xff8a1f, "opacity": 0.75, "blend": "add"})
+	var small_mat := Mats.basic({"color": 0x3fd0ff, "opacity": 0.7, "blend": "add"})
+	var rim_mat := Mats.basic({"color": 0xffffff, "opacity": 0.5, "blend": "add"})
+	var big_rim := Geo.cylinder(3.7, 3.7, 0.05, 28).to_mesh()
+	var small_rim := Geo.cylinder(2.3, 2.3, 0.05, 20).to_mesh()
+	for pd in t.pads:
+		var i: int = pd.i
+		var big: bool = pd.big
+		var x: float = t.px[i] + t.nx[i] * pd.lat
+		var z: float = t.pz[i] + t.nz[i] * pd.lat
+		var node := Node3D.new()
+		node.position = Vector3(x, t.py[i] + 0.1, z)
+		node.add_child(mesh_node(big_rim if big else small_rim, rim_mat))
+		var d := mesh_node(big_disc if big else small_disc, big_mat if big else small_mat)
+		d.position.y = 0.03
+		node.add_child(d)
+		add_child(node)
+		var entry := {"node": node, "x": x, "z": z, "big": big, "r": 3.6 if big else 2.4, "cd": 0, "disc": d}
+		pads.append(entry)
+		var phase: float = float(i) * 0.37
+		anims.append(func(_dt: float, tt: float):
+			var cool: bool = entry.cd > 0
+			var pulse := 1.0 + 0.06 * sin(tt * 4.0 + phase)
+			node.scale = Vector3(pulse, 1.0, pulse)
+			node.visible = not cool)
 
 
 func _build_gates() -> void:

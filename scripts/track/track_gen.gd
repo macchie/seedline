@@ -766,5 +766,62 @@ static func generate(seed: String, env_key: String) -> TrackData:
 				break
 			c += 1
 		tr.cps.append(c % N)
+	tr.pads = _gen_pads(tr)
 	tr.medals = CarSim.medal_times(tr)
 	return tr
+
+
+## Boost pads from their own RNG stream so the track itself never changes. Same seed, same pads.
+static func _gen_pads(tr: TrackData) -> Array:
+	var rng := SeedRng.from_seed("pads|" + tr.seed)
+	var N := tr.n
+	var blocked := PackedByteArray()
+	blocked.resize(N)
+	var guard := int(ceil(24.0 / U.DS))
+	for c in [0] + Array(tr.cps):
+		for d in range(-guard, guard + 1):
+			blocked[(int(c) + d + N * 4) % N] = 1
+	var pads: Array = []
+	var used := PackedByteArray()
+	used.resize(N)
+	var lat_max := U.HW - 2.6
+	var n_big := int(U.clampf2(U.jround(tr.length / 1600.0), 1.0, 3.0))
+	var n_small := int(U.clampf2(U.jround(tr.length / 260.0), 4.0, 16.0))
+	var tries := 0
+	var placed_big := 0
+	while placed_big < n_big and tries < 600:
+		tries += 1
+		var i := int(rng.next() * N) % N
+		var lat := (rng.next() * 2.0 - 1.0) * lat_max * 0.8
+		if _pad_ok(tr, blocked, used, i, 5, 0.004):
+			pads.append({"i": i, "lat": lat, "big": true})
+			_mark(used, i, int(ceil(120.0 / U.DS)), N)
+			placed_big += 1
+	var placed_small := 0
+	tries = 0
+	while placed_small < n_small and tries < 1200:
+		tries += 1
+		var i := int(rng.next() * N) % N
+		var lat := (rng.next() * 2.0 - 1.0) * lat_max
+		var cluster := 3 if rng.next() < 0.45 else 1
+		if not _pad_ok(tr, blocked, used, i, 5 + 5 * (cluster - 1), 0.009):
+			continue
+		for c in cluster:
+			var j := (i + c * 5) % N
+			pads.append({"i": j, "lat": lat, "big": false})
+		_mark(used, i, int(ceil(50.0 / U.DS)), N)
+		placed_small += 1
+	return pads
+
+
+static func _pad_ok(tr: TrackData, blocked: PackedByteArray, used: PackedByteArray, i: int, span: int, kmax: float) -> bool:
+	for d in range(-2, span + 3):
+		var j := (i + d) % tr.n
+		if blocked[j] == 1 or used[j] == 1 or tr.py[j] > 0.3 or absf(tr.k[j]) > kmax:
+			return false
+	return true
+
+
+static func _mark(used: PackedByteArray, i: int, r: int, N: int) -> void:
+	for d in range(-r, r + 1):
+		used[(i + d + N * 4) % N] = 1
