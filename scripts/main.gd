@@ -1384,11 +1384,12 @@ func _update_ghost() -> void:
 		else:
 			ghost_v.visible = false
 			mini_ghost = null
-		var live_race := state == "race" or state == "finished"
-		rival_ghost_fleet.update_at(race_steps * U.STEP if live_race else -1.0, track)
 	else:
 		ghost_v.visible = false
 		mini_ghost = null
+	var live_race := state == "race" or state == "finished"
+	var replaying := state == "replay" or (state == "paused" and paused_from == "replay")
+	rival_ghost_fleet.update_at(race_steps * U.STEP if live_race or replaying else -1.0, track)
 
 
 func _update_effects(dt: float, x: float, z: float, h: float, speed: float) -> void:
