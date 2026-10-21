@@ -56,10 +56,16 @@ var sens_slider: HSlider
 var sens_out: Label
 var opt_segs := {}
 var btn_play: Tap
+var custom_swatch: Tap
 var color_popup: PopupPanel
 var color_picker: ColorPicker
 var menu_on := true
 var menu_tw: Tween
+var pause_resume: Tap
+var finish_retry: Tap
+var _nav_stick := Vector2.ZERO
+var _nav_direction := Vector2i.ZERO
+var _nav_repeat_timer := 0.0
 
 # hud
 var hud: Control
@@ -261,6 +267,141 @@ func _ready() -> void:
 	_build_overlays()
 	resized.connect(relayout)
 	relayout()
+	call_deferred("focus_default")
+
+
+func focus_default() -> void:
+	if color_popup and color_popup.visible:
+		return
+	if pause_modal and pause_modal.visible:
+		pause_resume.grab_focus()
+	elif finish_modal and finish_modal.visible:
+		finish_retry.grab_focus()
+	elif menu_on:
+		btn_play.grab_focus()
+
+
+func _focus_direction(direction: Vector2i) -> void:
+	if direction == Vector2i.ZERO:
+		return
+	if not has_focusable_ui():
+		focus_default()
+	var owner := _focus_owner()
+	if owner == null:
+		return
+	if color_popup.visible and (owner == color_picker or color_picker.is_ancestor_of(owner)):
+		var c := color_picker.color
+		color_picker.color = Color.from_hsv(
+			fposmod(c.h + direction.x * 0.025, 1.0),
+			c.s,
+			clampf(c.v - direction.y * 0.04, 0.0, 1.0),
+			c.a
+		)
+		return
+	if owner is HSlider and direction.x != 0:
+		var slider := owner as HSlider
+		slider.value = clampf(slider.value + direction.x * slider.step, slider.min_value, slider.max_value)
+		return
+	var side: int
+	if direction.x < 0:
+		side = SIDE_LEFT
+	elif direction.x > 0:
+		side = SIDE_RIGHT
+	elif direction.y < 0:
+		side = SIDE_TOP
+	else:
+		side = SIDE_BOTTOM
+	var next := owner.find_valid_focus_neighbor(side)
+	if next == null:
+		next = owner.find_next_valid_focus() if direction.x > 0 or direction.y > 0 else owner.find_prev_valid_focus()
+	if next and next != owner:
+		next.grab_focus()
+		if tab_scroll.is_ancestor_of(next):
+			tab_scroll.ensure_control_visible(next)
+
+
+func has_focusable_ui() -> bool:
+	return _focus_owner() != null
+
+
+func _focus_owner() -> Control:
+	if color_popup.visible:
+		var popup_focus := color_popup.gui_get_focus_owner()
+		if popup_focus:
+			return popup_focus
+	return get_viewport().gui_get_focus_owner()
+
+
+func _set_stick_direction(direction: Vector2i) -> void:
+	if direction == _nav_direction:
+		return
+	_nav_direction = direction
+	_nav_repeat_timer = 0.35
+	if direction != Vector2i.ZERO:
+		_focus_direction(direction)
+
+
+func handle_joypad_event(ev: InputEvent) -> bool:
+	if game.state != "menu" and game.state != "paused" and not finish_modal.visible and not color_popup.visible:
+		return false
+	if ev is InputEventJoypadMotion:
+		if ev.axis == JOY_AXIS_LEFT_X:
+			_nav_stick.x = ev.axis_value
+		elif ev.axis == JOY_AXIS_LEFT_Y:
+			_nav_stick.y = ev.axis_value
+		else:
+			return false
+		var direction := Vector2i.ZERO
+		if absf(_nav_stick.x) > 0.65 or absf(_nav_stick.y) > 0.65:
+			if absf(_nav_stick.x) > absf(_nav_stick.y):
+				direction.x = 1 if _nav_stick.x > 0.0 else -1
+			else:
+				direction.y = 1 if _nav_stick.y > 0.0 else -1
+		_set_stick_direction(direction)
+		return true
+	if not ev is InputEventJoypadButton or not ev.pressed:
+		return false
+	match ev.button_index:
+		JOY_BUTTON_DPAD_LEFT:
+			_focus_direction(Vector2i.LEFT)
+		JOY_BUTTON_DPAD_RIGHT:
+			_focus_direction(Vector2i.RIGHT)
+		JOY_BUTTON_DPAD_UP:
+			_focus_direction(Vector2i.UP)
+		JOY_BUTTON_DPAD_DOWN:
+			_focus_direction(Vector2i.DOWN)
+		JOY_BUTTON_A:
+			_activate_focus()
+		JOY_BUTTON_B:
+			_cancel_ui()
+		JOY_BUTTON_START:
+			if game.state == "menu":
+				game.start_race()
+			elif game.state == "paused":
+				game.resume()
+		_:
+			return false
+	return true
+
+
+func _activate_focus() -> void:
+	var owner := _focus_owner()
+	if owner is Tap:
+		(owner as Tap).activate()
+	elif owner is BaseButton:
+		(owner as BaseButton).pressed.emit()
+	elif owner is LineEdit:
+		DisplayServer.virtual_keyboard_show((owner as LineEdit).text)
+
+
+func _cancel_ui() -> void:
+	if color_popup.visible:
+		color_popup.hide()
+		custom_swatch.grab_focus()
+	elif game.state == "paused":
+		game.resume()
+	elif finish_modal.visible:
+		game.to_menu()
 
 
 func _build_menu() -> void:
@@ -398,7 +539,7 @@ func _build_menu() -> void:
 	prow.alignment = BoxContainer.ALIGNMENT_CENTER
 	var race := L("Race", "display", 800, 24, on_accent, true, 0.08, true)
 	race.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	var enter := L("ENTER", "mono", 700, 10, Color(on_accent, 0.55), false, 0.05)
+	var enter := L("ENTER / A / CROSS", "mono", 700, 10, Color(on_accent, 0.55), false, 0.05)
 	enter.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	prow.add_child(race)
 	prow.add_child(enter)
@@ -490,9 +631,11 @@ func _build_garage_pane(parent: Control) -> void:
 	cu.border_w = 2.0
 	cu.pressed.connect(_open_picker)
 	swatch_box.add_child(cu)
+	custom_swatch = cu
 	swatches.append(cu)
 	color_popup = PopupPanel.new()
 	color_picker = ColorPicker.new()
+	color_picker.focus_mode = Control.FOCUS_ALL
 	color_picker.edit_alpha = false
 	color_picker.presets_visible = false
 	color_picker.sampler_visible = false
@@ -510,6 +653,12 @@ func _open_picker() -> void:
 	color_picker.color = U.css(game.car_cfg.color)
 	var sz := Vector2i(300, 360)
 	color_popup.popup_centered(sz)
+	call_deferred("_focus_color_picker")
+
+
+func _focus_color_picker() -> void:
+	if color_popup.visible:
+		color_picker.grab_focus()
 
 
 func _build_saved_pane(parent: Control) -> void:
@@ -535,7 +684,7 @@ func _build_options_pane(parent: Control) -> void:
 	sens_slider.max_value = 100
 	sens_slider.step = 1
 	sens_slider.custom_minimum_size = Vector2(0, 30)
-	sens_slider.focus_mode = Control.FOCUS_NONE
+	sens_slider.focus_mode = Control.FOCUS_ALL
 	_style_slider(sens_slider)
 	sens_slider.value_changed.connect(func(v): game.set_sens(int(v)))
 	o1.add_child(sens_slider)
@@ -562,9 +711,10 @@ func _build_options_pane(parent: Control) -> void:
 	keys.add_theme_constant_override("h_separation", 12)
 	keys.add_theme_constant_override("v_separation", 6)
 	keys.mouse_filter = Control.MOUSE_FILTER_PASS
-	for kv in [["↑ / W", "Accelerate · tap right before GO for a perfect start"], ["Space / Shift", "Hop and drift while turning. Hold it: sparks go blue, orange, purple. Let go for a turbo"],
-			["← → / A D", "Steer · during a drift, steer in to tighten, out to widen"], ["↓ / S", "Brake"], ["Backspace", "Respawn at last checkpoint"], ["R · Esc", "Restart · pause"],
-			["Touch", "Hold DRIFT while steering to drift, or alone to brake"], ["Pad", "RT gas · LT brake · RB drift · Y respawn"]]:
+	for kv in [["↑ / W", "Accelerate · tap right before GO for a perfect start"],
+			["← → / A D", "Steer"], ["↓ / S", "Brake"], ["Backspace", "Respawn at last checkpoint"], ["R · Esc", "Restart · pause"],
+			["Touch", "Steer with the left half · GAS and BRAKE on the right"],
+			["Pad", "D-pad / left stick navigate · Cross / A select · Circle / B back · R2 / RT gas · L2 / LT brake · left stick steer · Triangle / Y respawn · Options / Start pause"]]:
 		var kb := glass(PANEL2, LINE, 6.0)
 		kb.pad(6, 3, 6, 3)
 		kb.add_child(L(kv[0], "mono", 700, 11, FG))
@@ -639,8 +789,8 @@ func _build_hud() -> void:
 	pad_brake.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var bl := vbox(4)
 	bl.alignment = BoxContainer.ALIGNMENT_CENTER
-	brake_l1 = L("DRIFT", "display", 800, 15, Color("#ffb3ad"), true, 0.08)
-	brake_l2 = L("BRAKE", "body", 700, 9, Color("#ffb3ad", 0.7), false, 0.16)
+	brake_l1 = L("BRAKE", "display", 800, 15, Color("#ffb3ad"), true, 0.08)
+	brake_l2 = L("HOLD", "body", 700, 9, Color("#ffb3ad", 0.7), false, 0.16)
 	brake_l1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	brake_l2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	bl.add_child(brake_l1)
@@ -654,7 +804,7 @@ func _build_hud() -> void:
 	pad_gas.add_child(center(gas_l))
 	pads.add_child(pad_gas)
 	tip_l = L("Slide left ↔ right\nanywhere on this half", "body", 600, 11, Color(1, 1, 1, 0.8), false, 0.12, true)
-	tip_r = L("Gas · drift\nslide between them", "body", 600, 11, Color(1, 1, 1, 0.8), false, 0.12, true)
+	tip_r = L("Gas · brake\nslide between them", "body", 600, 11, Color(1, 1, 1, 0.8), false, 0.12, true)
 	for t in [tip_l, tip_r]:
 		t.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
 		t.add_theme_constant_override("shadow_outline_size", 6)
@@ -782,6 +932,7 @@ func _build_modals() -> void:
 	pbox.add_child(L("Paused", "display", 800, 34, FG, true, 0.0, true))
 	var pg := vbox(8)
 	var r1 := _cbtn("Resume", true)
+	pause_resume = r1[0]
 	r1[0].pressed.connect(func(): game.resume())
 	pg.add_child(r1[0])
 	var row := hbox(8)
@@ -821,6 +972,7 @@ func _build_modals() -> void:
 	fbox.add_child(f_medals)
 	var fg := vbox(8)
 	var b1 := _cbtn("Retry", true, "R")
+	finish_retry = b1[0]
 	b1[0].pressed.connect(func(): game.restart(true))
 	fg.add_child(b1[0])
 	var row2 := hbox(8)
@@ -1285,13 +1437,16 @@ func sync_car() -> void:
 	for b in swatches:
 		var key: String = b.get_meta("c")
 		var on := (key == c) or (key == "custom" and custom)
-		b.border_col = FG if on else Color(1, 1, 1, 0.12)
-		b.border_w = 2.0 if on else 1.0
-		b._sync()
+		b.set_border_state(FG if on else Color(1, 1, 1, 0.12), 2.0 if on else 1.0)
 	set_seg(finish_seg, game.car_cfg.finish)
 
 
 func _process(_dt: float) -> void:
+	if _nav_direction != Vector2i.ZERO and (menu_on or pause_modal.visible or finish_modal.visible or color_popup.visible):
+		_nav_repeat_timer -= _dt
+		if _nav_repeat_timer <= 0.0:
+			_focus_direction(_nav_direction)
+			_nav_repeat_timer = 0.12
 	# keep swatches square (aspect-ratio: 1)
 	if swatch_box and swatch_box.is_visible_in_tree():
 		for b in swatches:
@@ -1310,12 +1465,17 @@ func set_menu(on: bool) -> void:
 	mtop.visible = on
 	if on:
 		relayout()
+		focus_default()
 		var target := sheet.position
 		_apply_menu_hidden()
 		menu_tw.tween_property(sheet, "position", target, 0.45)
 		menu_tw.tween_property(sheet, "modulate:a", 1.0, 0.3)
 		menu_tw.tween_property(mtop, "modulate:a", 1.0, 0.3)
 	else:
+		_set_stick_direction(Vector2i.ZERO)
+		var focus := _focus_owner()
+		if focus and (sheet.is_ancestor_of(focus) or mtop.is_ancestor_of(focus)):
+			focus.release_focus()
 		var rect := sheet_rect()
 		menu_tw.tween_property(sheet, "position:y", rect.position.y + rect.size.y * 1.05, 0.45)
 		menu_tw.tween_property(sheet, "modulate:a", 0.0, 0.3)
@@ -1435,8 +1595,16 @@ func toast(s: String) -> void:
 func show_pause(on: bool, track_txt: String = "") -> void:
 	pause_modal.visible = on
 	if on:
+		_set_stick_direction(Vector2i.ZERO)
 		pause_track.text = track_txt.to_upper()
 		_rise(pause_modal.get_child(0))
+		pause_resume.grab_focus()
+	elif finish_modal.visible:
+		finish_retry.grab_focus()
+	else:
+		var focus := _focus_owner()
+		if focus and pause_modal.is_ancestor_of(focus):
+			focus.release_focus()
 
 
 func _rise(card: Control) -> void:
@@ -1451,6 +1619,10 @@ func _rise(card: Control) -> void:
 
 func hide_finish() -> void:
 	finish_modal.visible = false
+	_set_stick_direction(Vector2i.ZERO)
+	var focus := _focus_owner()
+	if focus and finish_modal.is_ancestor_of(focus):
+		focus.release_focus()
 
 
 func show_finish(track_txt: String, t: float, medal, delta_txt: String, delta_col: Color, pb) -> void:
@@ -1474,6 +1646,7 @@ func show_finish(track_txt: String, t: float, medal, delta_txt: String, delta_co
 	sync_icons()
 	finish_modal.visible = true
 	_rise(finish_modal.get_child(0))
+	finish_retry.grab_focus()
 
 
 func set_loading(on: bool) -> void:

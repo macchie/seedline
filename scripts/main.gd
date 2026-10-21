@@ -2,6 +2,7 @@ extends Node3D
 ## Seedline — game loop, race rules, camera, input, persistence (port of the web build's main script).
 
 const TURBO_COL := [0xffffff, 0x3fb4ff, 0xffa32a, 0xd25bff]
+const DRIFT_ENABLED := false
 const KEYMAP := {KEY_UP: "gas", KEY_W: "gas", KEY_DOWN: "brake", KEY_S: "brake", KEY_SPACE: "drift", KEY_SHIFT: "drift", KEY_K: "drift",
 	KEY_LEFT: "left", KEY_A: "left", KEY_RIGHT: "right", KEY_D: "right"}
 
@@ -314,6 +315,9 @@ func place_car_at(i: int, back: int = 0) -> void:
 # ================================================================== input
 
 func _unhandled_input(ev: InputEvent) -> void:
+	if (ev is InputEventJoypadButton or ev is InputEventJoypadMotion) and ui.handle_joypad_event(ev):
+		get_viewport().set_input_as_handled()
+		return
 	if ev is InputEventKey:
 		var k = KEYMAP.get(ev.physical_keycode if ev.physical_keycode != 0 else ev.keycode)
 		if k != null:
@@ -442,27 +446,38 @@ func read_input() -> Dictionary:
 		steer = U.jsign(ts.val) * a
 		analog = true
 	var pads := Input.get_connected_joypads()
-	if not pads.is_empty():
-		var d: int = pads[0]
-		var ax := Input.get_joy_axis(d, JOY_AXIS_LEFT_X)
-		if absf(ax) > 0.15:
+	var steer_strength := 0.15
+	var pad_y := false
+	var pad_st := false
+	for pad in pads:
+		var device := int(pad)
+		var ax := Input.get_joy_axis(device, JOY_AXIS_LEFT_X)
+		if absf(ax) > steer_strength:
 			steer = U.clampf2(ax, -1.0, 1.0)
 			analog = true
-		var bt := func(i): return Input.is_joy_button_pressed(d, i)
-		if Input.get_joy_axis(d, JOY_AXIS_TRIGGER_RIGHT) > 0.3 or bt.call(JOY_BUTTON_A):
+			steer_strength = absf(ax)
+		if Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > 0.3 or Input.is_joy_button_pressed(device, JOY_BUTTON_A):
 			gas = true
-		if Input.get_joy_axis(d, JOY_AXIS_TRIGGER_LEFT) > 0.3 or bt.call(JOY_BUTTON_B):
+		if Input.get_joy_axis(device, JOY_AXIS_TRIGGER_LEFT) > 0.3 or Input.is_joy_button_pressed(device, JOY_BUTTON_B):
 			brake = true
-		if bt.call(JOY_BUTTON_RIGHT_SHOULDER) or bt.call(JOY_BUTTON_LEFT_SHOULDER) or bt.call(JOY_BUTTON_X):
+		if Input.is_joy_button_pressed(device, JOY_BUTTON_RIGHT_SHOULDER) or Input.is_joy_button_pressed(device, JOY_BUTTON_LEFT_SHOULDER) or Input.is_joy_button_pressed(device, JOY_BUTTON_X):
 			drift = true
-		var y: bool = bt.call(JOY_BUTTON_Y)
-		var st: bool = bt.call(JOY_BUTTON_START)
-		if y and not pad_prev.y:
-			respawn()
-		if st and not pad_prev.st:
-			toggle_pause()
-		pad_prev = {"y": y, "st": st}
-	return {"gas": gas, "brake": brake, "drift": drift, "steer": steer, "analog": analog}
+		pad_y = pad_y or Input.is_joy_button_pressed(device, JOY_BUTTON_Y)
+		pad_st = pad_st or Input.is_joy_button_pressed(device, JOY_BUTTON_START)
+	if pad_y and not pad_prev.y:
+		respawn()
+	if pad_st and not pad_prev.st:
+		toggle_pause()
+	pad_prev = {"y": pad_y, "st": pad_st}
+	return {"gas": gas, "brake": brake, "drift": drift and DRIFT_ENABLED, "steer": steer, "analog": analog}
+
+
+func joypad_gas_pressed() -> bool:
+	for pad in Input.get_connected_joypads():
+		var device := int(pad)
+		if Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > 0.3 or Input.is_joy_button_pressed(device, JOY_BUTTON_A):
+			return true
+	return false
 
 
 # ================================================================== race
@@ -842,7 +857,7 @@ func _process(delta: float) -> void:
 		return
 	if state == "countdown":
 		# start boost: first press of the gas inside the last third of a second before GO
-		var g: bool = keys.get("gas", false) or ts.gas
+		var g: bool = keys.get("gas", false) or ts.gas or joypad_gas_pressed()
 		if g and not cd.gas:
 			if cd_t <= 0.34:
 				cd.boost = not cd.blown
