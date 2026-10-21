@@ -71,6 +71,10 @@ var online_lbl: Label
 var btn_acct: Tap
 var ic_acct: Icon
 var acct_modal: Control
+var seed_modal: Control
+var seed_dialog_button: Tap
+var seed_dialog_caption: Label
+var seed_dialog_box: VBoxContainer
 var acct_scroll: ScrollContainer
 var acct_box: VBoxContainer
 var acct_mode := "signin"
@@ -382,7 +386,10 @@ func focus_default() -> void:
 	if color_popup and color_popup.visible:
 		return
 	if modal_open():
-		acct_email.grab_focus()
+		if seed_modal.visible:
+			seed_in.grab_focus()
+		else:
+			acct_email.grab_focus()
 	elif pause_modal and pause_modal.visible:
 		pause_resume.grab_focus()
 	elif finish_modal and finish_modal.visible:
@@ -435,7 +442,8 @@ func _focus_direction(direction: Vector2i) -> void:
 		next = owner.find_valid_focus_neighbor(side)
 	if next == null:
 		next = owner.find_next_valid_focus() if direction.x > 0 or direction.y > 0 else owner.find_prev_valid_focus()
-	if modal_open() and next != null and not acct_modal.is_ancestor_of(next):
+	var dialog := _active_dialog()
+	if dialog != null and next != null and not dialog.is_ancestor_of(next):
 		return
 	if next and next != owner:
 		next.grab_focus()
@@ -523,7 +531,7 @@ func _activate_focus() -> void:
 
 func _cancel_ui() -> void:
 	if modal_open():
-		show_account(false)
+		_close_dialog()
 	elif color_popup.visible:
 		color_popup.hide()
 		custom_swatch.grab_focus()
@@ -738,7 +746,6 @@ func _pane(parent: Control, key: String) -> VBoxContainer:
 func _build_track_pane(parent: Control) -> void:
 	var p := _pane(parent, "drive")
 	p.add_child(eyebrow("Track code"))
-	var form := hbox(8)
 	seed_in = LineEdit.new()
 	seed_in.placeholder_text = "Paste a seed, e.g. A7K2M9Q4B6N8P3RX"
 	seed_in.max_length = 24
@@ -769,15 +776,15 @@ func _build_track_pane(parent: Control) -> void:
 			var c := seed_in.caret_column
 			seed_in.text = up
 			seed_in.caret_column = c)
-	seed_in.text_submitted.connect(func(t): game.submit_seed(seed_in.text))
-	form.add_child(seed_in)
-	var load_b := tap(Color(1, 1, 1, 0.1), Color(0, 0, 0, 0), 12.0)
-	load_b.custom_minimum_size = Vector2(0, 42)
-	load_b.pad(16, 0, 16, 0)
-	load_b.add_child(center(L("Load", "body", 600, 13, FG, false, 0.06, true)))
-	load_b.pressed.connect(func(): game.submit_seed(seed_in.text))
-	form.add_child(load_b)
-	p.add_child(form)
+	seed_in.text_submitted.connect(func(_text): _submit_seed())
+	var seed_action := _cbtn("Race a track code", false, "ENTER")
+	seed_dialog_button = seed_action[0]
+	seed_dialog_button.pressed.connect(func(): show_seed_dialog(true))
+	p.add_child(seed_dialog_button)
+	var seed_note := L("Paste a 16-character code to race the same course as a friend.", "body", 400, 11, DIM)
+	seed_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	seed_note.custom_minimum_size = Vector2(120, 0)
+	p.add_child(seed_note)
 	# Keep online rankings available on wide desktop layouts without crowding the Drive panel.
 	var lb_head := hbox(8)
 	lb_eyebrow = eyebrow("Leaderboard")
@@ -1397,6 +1404,46 @@ func _build_account_modal() -> void:
 	acct_box.add_child(cl[0])
 	acct_modal.set_meta("close", cl[0])
 	_set_acct_mode("signin")
+	_build_seed_modal()
+
+
+func _build_seed_modal() -> void:
+	seed_modal = ColorRect.new()
+	seed_modal.color = Color(5 / 255.0, 6 / 255.0, 10 / 255.0, 0.72)
+	seed_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	seed_modal.mouse_filter = Control.MOUSE_FILTER_STOP
+	seed_modal.visible = false
+	add_child(seed_modal)
+	var card := glass(PANEL, LINE, 20.0, 3.0)
+	card.pad(22, 20, 22, 20)
+	seed_modal.add_child(card)
+	seed_dialog_box = vbox(12)
+	card.add_child(seed_dialog_box)
+	seed_dialog_box.add_child(eyebrow("Find a course"))
+	seed_dialog_box.add_child(L("Race a track code", "display", 800, 28, FG, true, 0.0, true))
+	seed_dialog_caption = L("Enter a seed to load the exact same generated track.", "body", 400, 12, DIM)
+	seed_dialog_caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	seed_dialog_caption.custom_minimum_size = Vector2(120, 0)
+	seed_dialog_box.add_child(seed_dialog_caption)
+	seed_in.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	seed_dialog_box.add_child(seed_in)
+	var actions := hbox(8)
+	var load := _cbtn("Load track", true)
+	load[0].pressed.connect(_submit_seed)
+	var cancel := _cbtn("Cancel", false)
+	cancel[0].pressed.connect(func(): show_seed_dialog(false))
+	actions.add_child(load[0])
+	actions.add_child(cancel[0])
+	seed_dialog_box.add_child(actions)
+
+
+func _submit_seed() -> void:
+	if game.parse_seed(seed_in.text) == null:
+		game.submit_seed(seed_in.text)
+		seed_in.grab_focus()
+		return
+	show_seed_dialog(false)
+	game.submit_seed(seed_in.text)
 
 
 func _set_acct_mode(m: String) -> void:
@@ -1498,7 +1545,39 @@ func _acct_sign_out() -> void:
 
 
 func modal_open() -> bool:
-	return acct_modal != null and acct_modal.visible
+	return _active_dialog() != null
+
+
+func _active_dialog() -> Control:
+	if acct_modal != null and acct_modal.visible:
+		return acct_modal
+	if seed_modal != null and seed_modal.visible:
+		return seed_modal
+	return null
+
+
+func _close_dialog() -> void:
+	if acct_modal != null and acct_modal.visible:
+		show_account(false)
+	elif seed_modal != null and seed_modal.visible:
+		show_seed_dialog(false)
+
+
+func show_seed_dialog(on: bool) -> void:
+	if on == seed_modal.visible:
+		return
+	seed_modal.visible = on
+	_set_stick_direction(Vector2i.ZERO)
+	if on:
+		relayout()
+		_rise(seed_modal.get_child(0))
+		seed_in.grab_focus()
+	else:
+		var focus := _focus_owner()
+		if focus and seed_modal.is_ancestor_of(focus):
+			focus.release_focus()
+		if menu_on:
+			seed_dialog_button.grab_focus()
 
 
 func show_account(on: bool) -> void:
@@ -1566,6 +1645,20 @@ func _layout_account(W: float, H: float, sl: float, sr: float, st: float, sb: fl
 			_acct_settled = false
 			if acct_modal.visible:
 				_layout_account(W, H, sl, sr, st, sb), CONNECT_ONE_SHOT)
+
+
+func _layout_seed_dialog(W: float, H: float, sl: float, sr: float, st: float, sb: float) -> void:
+	if seed_modal == null:
+		return
+	var card: Glass = seed_modal.get_child(0)
+	var cw := minf(460.0, W - sl - sr - 16.0)
+	var avail := H - st - sb - 16.0
+	seed_dialog_caption.custom_minimum_size.x = cw - 44.0
+	seed_dialog_box.custom_minimum_size.x = cw - 44.0
+	card.size = Vector2(cw, 0)
+	card.size = Vector2(cw, minf(card.get_combined_minimum_size().y, avail))
+	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - card.size.y) / 2.0))
+	card._sync()
 
 
 func _build_overlays() -> void:
@@ -1739,6 +1832,7 @@ func relayout() -> void:
 	_layout_pads(W, H, sl, sr, sb)
 	# modals
 	_layout_account(W, H, sl, sr, st, sb)
+	_layout_seed_dialog(W, H, sl, sr, st, sb)
 	for m in [pause_modal, finish_modal]:
 		var card: Glass = m.get_child(0)
 		var cw := minf(420.0, W - sl - sr)
@@ -1996,7 +2090,7 @@ func set_accent(a: Color, on: Color) -> void:
 	_style_slider(sens_slider)
 	var f: StyleBoxFlat = seed_in.get_theme_stylebox("focus")
 	f.border_color = accent
-	for m in [pause_modal, finish_modal, acct_modal]:
+	for m in [pause_modal, finish_modal, acct_modal, seed_modal]:
 		for b in _all_taps(m):
 			if b.has_meta("primary") and b.get_meta("primary"):
 				b.style(accent, Color(0, 0, 0, 0), 12.0)
@@ -2395,7 +2489,7 @@ func _cached_fav_track(seed: String, env_key: String) -> TrackData:
 func set_tab(t: String) -> void:
 	for b in tabs:
 		var on: bool = b.get_meta("v") == t
-		b.style(Color(1, 1, 1, 0.1) if on else Color(0, 0, 0, 0), Color(0, 0, 0, 0), 9.0)
+		b.style(Color(accent, 0.18) if on else Color(1, 1, 1, 0.025), Color(1, 1, 1, 0.08) if on else Color(0, 0, 0, 0), 9.0)
 		(b.get_meta("lbl") as Label).add_theme_color_override("font_color", FG if on else DIM)
 	for k in panes:
 		panes[k].visible = k == t
@@ -2456,7 +2550,7 @@ func sync_car() -> void:
 func _input(ev: InputEvent) -> void:
 	if modal_open() and ev is InputEventKey and ev.pressed and not ev.echo and ev.keycode == KEY_ESCAPE:
 		get_viewport().set_input_as_handled()
-		show_account(false)
+		_close_dialog()
 
 
 func _process(_dt: float) -> void:
