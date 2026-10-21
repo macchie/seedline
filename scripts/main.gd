@@ -38,6 +38,8 @@ var race_steps := 0
 var lap := 1
 var next_cp := 0
 var splits: Array = []
+var net: Net
+var run_info = null
 var ghost_rec: Array = []
 var snapshot = null
 var cd_t := 0.0
@@ -96,6 +98,15 @@ func _ready() -> void:
 		car_cfg[k] = c[k]
 	favs = Store.get_value("favs", [])
 	_build_scene()
+	net = Net.new()
+	net.name = "Net"
+	add_child(net)
+	net.online_changed.connect(func(n): ui.set_online_count(n, net.is_online()))
+	net.status_changed.connect(_on_net_status)
+	net.track_info_ready.connect(_on_track_info)
+	net.run_submitted.connect(_on_run_submitted)
+	ui.name_in.text = net.display_name
+	_on_net_status(net.status)
 	get_window().size_changed.connect(_on_resize)
 	_on_resize()
 	ui.set_touch(touch_ui)
@@ -701,6 +712,9 @@ func finish_race(t: float) -> void:
 			if f.seed == track.seed:
 				f.best = t
 				Store.set_value("favs", favs)
+	run_info = null
+	if net.eligible(track.seed):
+		net.submit_run(track.seed, track.env_key, t, track.length, splits, U.LAPS)
 	var seed_now := track.seed
 	get_tree().create_timer(1.3).timeout.connect(func():
 		if state != "finished" or track.seed != seed_now:
@@ -713,7 +727,46 @@ func finish_race(t: float) -> void:
 		else:
 			dtxt = ("New best " if is_pb else "") + U.fmt_delta(t - prev_best)
 			dcol = Ui.FAST if t < prev_best else Ui.SLOW
-		ui.show_finish(track.name + " · " + track.seed, t, m, dtxt, dcol, minf(t, prev_best if prev_best != null else t)))
+		ui.show_finish(track.name + " · " + track.seed, t, m, dtxt, dcol, minf(t, prev_best if prev_best != null else t))
+		ui.set_finish_rank(run_info))
+
+
+# ================================================================== online (Nakama)
+
+func net_eligible() -> bool:
+	return net != null and track != null and net.eligible(track.seed)
+
+
+func fetch_leaderboard() -> void:
+	if net_eligible():
+		net.fetch_track_info(track.seed, track.env_key)
+
+
+func set_racer_name(n: String) -> void:
+	if n.strip_edges() != net.display_name:
+		net.set_display_name(n)
+
+
+func _on_net_status(s: String) -> void:
+	ui.set_online_count(net.online, net.is_online())
+	ui.set_net_status("Connected to the leaderboard server." if s == "online" else ("Offline. Runs are saved and uploaded later." if net.enabled else "Online features are disabled."))
+	if s == "online":
+		fetch_leaderboard()
+
+
+func _on_track_info(seed: String, env: String, info: Dictionary) -> void:
+	if track == null or seed != track.seed or env != track.env_key:
+		return
+	ui.render_leaderboard(info)
+
+
+func _on_run_submitted(seed: String, env: String, info: Dictionary) -> void:
+	if track == null or seed != track.seed or env != track.env_key:
+		return
+	run_info = info
+	ui.render_leaderboard(info)
+	if ui.finish_modal.visible:
+		ui.set_finish_rank(info)
 
 
 # ================================================================== menu actions (bound from the UI)

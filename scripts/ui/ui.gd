@@ -47,6 +47,12 @@ var panes := {}
 var tab_scroll: ScrollContainer
 var seed_in: LineEdit
 var medals_box: VBoxContainer
+var lb_box: VBoxContainer
+var lb_stats: Label
+var online_lbl: Label
+var name_in: LineEdit
+var net_status_lbl: Label
+var f_rank: Label
 var swatch_box: GridContainer
 var swatches: Array = []
 var finish_seg: Array = []
@@ -430,6 +436,9 @@ func _build_menu() -> void:
 	tag.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
 	tag.add_theme_constant_override("shadow_outline_size", 6)
 	brand.add_child(tag)
+	online_lbl = L("", "body", 600, 10, Color(1, 1, 1, 0.7), false, 0.18, true)
+	online_lbl.visible = false
+	brand.add_child(online_lbl)
 	mtop.add_child(brand)
 	var sb := icon_btn("sound")
 	btn_sound = sb[0]
@@ -602,6 +611,16 @@ func _build_track_pane(parent: Control) -> void:
 	p.add_child(form)
 	medals_box = vbox(2)
 	p.add_child(medals_box)
+	var lb_head := hbox(8)
+	var lbe := eyebrow("Leaderboard")
+	lbe.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lb_head.add_child(lbe)
+	lb_stats = L("", "body", 600, 10, DIM, false, 0.12, true)
+	lb_head.add_child(lb_stats)
+	p.add_child(lb_head)
+	lb_box = vbox(2)
+	p.add_child(lb_box)
+	render_leaderboard(null)
 
 
 func _build_garage_pane(parent: Control) -> void:
@@ -728,6 +747,25 @@ func _build_options_pane(parent: Control) -> void:
 		keys.add_child(d)
 	o2.add_child(keys)
 	p.add_child(o2)
+	var o3 := vbox(6)
+	o3.add_child(eyebrow("Online racer name"))
+	name_in = LineEdit.new()
+	name_in.max_length = 20
+	name_in.custom_minimum_size = Vector2(0, 42)
+	name_in.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT
+	var nsb: StyleBoxFlat = seed_in.get_theme_stylebox("normal").duplicate()
+	name_in.add_theme_stylebox_override("normal", nsb)
+	name_in.add_theme_stylebox_override("focus", seed_in.get_theme_stylebox("focus").duplicate())
+	name_in.add_theme_font_override("font", UiFonts.get_font("body", 600))
+	name_in.add_theme_font_size_override("font_size", 14)
+	name_in.add_theme_color_override("font_color", FG)
+	name_in.add_theme_color_override("caret_color", FG)
+	name_in.text_submitted.connect(func(t): game.set_racer_name(t))
+	name_in.focus_exited.connect(func(): game.set_racer_name(name_in.text))
+	o3.add_child(name_in)
+	net_status_lbl = L("", "body", 400, 12, DIM)
+	o3.add_child(net_status_lbl)
+	p.add_child(o3)
 
 
 func _style_slider(s: HSlider) -> void:
@@ -968,6 +1006,9 @@ func _build_modals() -> void:
 	f_delta.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	rr.add_child(f_delta)
 	fbox.add_child(rr)
+	f_rank = L("", "body", 600, 12, accent, false, 0.12, true)
+	f_rank.visible = false
+	fbox.add_child(f_rank)
 	f_medals = vbox(2)
 	fbox.add_child(f_medals)
 	var fg := vbox(8)
@@ -1311,6 +1352,8 @@ func refresh_menu() -> void:
 	seed_lbl.text = t.seed
 	var b = Store.get_value("best5." + t.seed, null)
 	render_medals(medals_box, b.t if b != null else null)
+	render_leaderboard({"loading": true} if game.net_eligible() else null)
+	game.fetch_leaderboard()
 	sync_icons()
 	render_favs()
 	prev_map.set_track(t, accent)
@@ -1351,6 +1394,88 @@ func render_medals(box: VBoxContainer, pb) -> void:
 	for md in CarSim.MEDALS:
 		_medal_row(box, MEDAL_COL[md[0]], md[1], U.fmt(m[md[0]]))
 	_medal_row(box, accent, "Personal best", U.fmt(pb) if pb != null else "—", true)
+
+
+## info: null = nothing to show, {"loading": true}, {"error": true} or the server's track info.
+func render_leaderboard(info) -> void:
+	if lb_box == null:
+		return
+	for c in lb_box.get_children():
+		c.queue_free()
+		lb_box.remove_child(c)
+	lb_stats.text = ""
+	var msg := ""
+	if info == null:
+		msg = "Online ranking is off for this track"
+	elif info.get("loading", false):
+		msg = "Loading…"
+	elif info.get("error", false):
+		msg = "Leaderboard offline"
+	else:
+		var st: Dictionary = info.get("stats", {})
+		var runs := int(st.get("runs", 0))
+		lb_stats.text = ("%d RUNS · %d RACERS" % [runs, int(st.get("players", 0))])
+		var top = info.get("top", [])
+		if not (top is Array):
+			top = []
+		if top.is_empty():
+			msg = "No times yet. Be the first."
+		var mine = info.get("me")
+		var shown_me := false
+		for r in top:
+			var is_me: bool = mine is Dictionary and int(r.rank) == int(mine.get("rank", -1)) and str(r.name) == str(mine.get("name", ""))
+			shown_me = shown_me or is_me
+			_rank_row(int(r.rank), str(r.name), float(r.time_ms) / 1000.0, is_me)
+		if mine is Dictionary and not shown_me and int(mine.get("rank", 0)) > 0:
+			_rank_row(int(mine.rank), str(mine.get("name", "")), float(mine.time_ms) / 1000.0, true)
+	if msg != "":
+		var l := L(msg, "body", 400, 12, DIM)
+		l.custom_minimum_size = Vector2(0, 30)
+		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lb_box.add_child(l)
+	if game.track != null:
+		relayout()
+
+
+func _rank_row(rank: int, name: String, t: float, me: bool) -> void:
+	var row := glass(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 0.0)
+	row.custom_minimum_size = Vector2(0, 28)
+	row.pad(4, 0, 4, 0)
+	var h := hbox(10)
+	var rk := L("%d" % rank, "mono", 700, 12, accent if me else DIM)
+	rk.custom_minimum_size = Vector2(26, 0)
+	rk.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	h.add_child(rk)
+	var n := L(name, "body", 600, 12, FG if me else DIM, false, 0.06, true)
+	n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	n.clip_text = true
+	n.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	h.add_child(n)
+	var tl := L(U.fmt(t), "mono", 700 if me else 500, 13, accent if me else FG)
+	tl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	h.add_child(tl)
+	row.add_child(h)
+	lb_box.add_child(row)
+
+
+func set_online_count(n: int, on: bool) -> void:
+	online_lbl.visible = on
+	online_lbl.text = "● %d ONLINE" % n
+
+
+func set_net_status(text: String) -> void:
+	if net_status_lbl:
+		net_status_lbl.text = text
+
+
+func set_finish_rank(info) -> void:
+	var me = info.get("me") if info is Dictionary else null
+	if me is Dictionary and int(me.get("rank", 0)) > 0:
+		var runs := int(info.get("stats", {}).get("players", 0))
+		f_rank.text = ("World rank #%d of %d" % [int(me.rank), runs]).to_upper()
+		f_rank.visible = true
+	else:
+		f_rank.visible = false
 
 
 func render_favs() -> void:

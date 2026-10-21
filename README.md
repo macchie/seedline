@@ -62,10 +62,18 @@ scripts/sim     car physics (stepCar) and medal times
 scripts/render  geometry builders (three.js primitives), materials, procedural textures
 scripts/world   world builder, props for the nine places, car model, effects
 scripts/audio   synthesised sound
+scripts/net     Nakama client (auth, presence, leaderboards, offline run queue)
 scripts/ui      menu, HUD, touch controls and widgets
 shaders         toon, PBR, water, lava, weather, sprites, ink and clouds, grade
+server          Nakama Lua module and deploy script, see server/README.md
 tools           developer scripts (screenshots, benchmarks, track checksums); not needed to play
 ```
+
+## Online (Nakama)
+
+Leaderboards per track, track statistics, sessions and the online count come from a Nakama server
+(default `127.0.0.1:7350`, configured in the `[seedline]` section of `project.godot`).
+See [server/README.md](server/README.md) for deployment and production notes. The game works offline.
 
 ## Exporting
 
