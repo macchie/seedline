@@ -20,6 +20,9 @@ The first import takes a few seconds while Godot imports the fonts.
   temples, boats and the rest land in the same spots.
 - **Driving.** The same fixed 120 Hz kart model (snappy steering, hop-drift, three-level mini-turbo, perfect start),
   the same collisions and the same checkpoint and lap rules. Lap times, medals and ghosts are therefore comparable.
+- **Anti-cut.** Besides the visible checkpoints, a lap needs invisible gates every ~100 m, driven in order
+  and near the road. Cutting across the infield or skipping a section means the next checkpoint or finish line
+  won't count until you go back through the missed part (a "Track cut" toast tells you). Track layouts are unchanged.
 - **Look.** Three-band toon lighting with shadows, hemisphere ambient, rim light, ink outlines, drifting cloud shadows,
   tilt-shift, bloom, the per-world colour grade, vignette and grain. The water shader has foam, ripples and river
   flow; there is also lava, weather (rain, drizzle, snow, dust, embers), smoke and splashes.
@@ -29,9 +32,9 @@ The first import takes a few seconds while Godot imports the fonts.
 - **Controls.** Every action is rebindable (two slots each, keyboard and gamepad) under Options → Controls, and the
   bindings persist in `user://seedline.json`.
   - Keyboard (defaults): arrows or WASD; Space or Shift to boost; Backspace to respawn; R or Enter to restart; Esc or P
-    to pause.
+	to pause.
   - Gamepad (defaults): RT gas, LT or B brake, left stick or D-pad steer, A / Cross boost, Y / Triangle respawn,
-    Start pause.
+	Start pause.
   - Touch: the hidden-slider steering wheel plus the BOOST, BRAKE and GAS pads, with a left- or right-thumb option.
 - **Boost.** A Rocket-League-style gauge: 100 capacity, 2/3 full at the start of every run, drained while boost is held.
   Big orange pads (+100, 10 s respawn) and small cyan pads (+12, 4 s respawn) are placed from the seed with their own

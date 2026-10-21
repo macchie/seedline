@@ -4,7 +4,8 @@ extends Node3D
 const TURBO_COL := [0xffffff, 0x3fb4ff, 0xffa32a, 0xd25bff]
 const DRIFT_ENABLED := false
 # Extra pickup reach (m) on top of each pad's radius, roughly the car's half-length.
-const PAD_TOLERANCE := 2.2
+const PAD_TOLERANCE := 3
+const N_WARN_AHEAD := 12
 
 # --- persistent options (same keys and defaults as localStorage in the web build)
 var opts := {"gfx": "high", "sound": true, "side": "left", "sensV": 75, "stats": ""}
@@ -37,6 +38,8 @@ var state := "menu"
 var race_steps := 0
 var lap := 1
 var next_cp := 0
+var hidden_next := 0
+var cut_warn_t := 0.0
 var splits: Array = []
 var net: Net
 var run_info = null
@@ -597,13 +600,17 @@ func physics_step() -> void:
 		ghost_rec.append(U.jround(car.z * 100.0) / 100.0)
 		ghost_rec.append(U.jround(car.h * 1000.0) / 1000.0)
 	race_steps += 1
+	_track_hidden_gates(prev)
 	if absf(car.lat) < U.HW + 6.0:
 		var K := track.cps.size()
 		var target: int = track.cps[next_cp] if next_cp < K else 0
 		if crossed(prev, car.idx, target, track.n):
+			if hidden_next < track.hidden_before(target):
+				_warn_cut()
+				return
 			var t := race_steps * U.STEP
 			splits.append(t)
-			snapshot = {"x": car.x, "z": car.z, "h": car.h, "vx": car.vx, "vz": car.vz, "idx": car.idx}
+			snapshot = {"x": car.x, "z": car.z, "h": car.h, "vx": car.vx, "vz": car.vz, "idx": car.idx, "hn": hidden_next}
 			var si := splits.size() - 1
 			var ref = null
 			if best != null and best.has("splits") and si < best.splits.size():
@@ -616,11 +623,35 @@ func physics_step() -> void:
 			else:
 				lap += 1
 				next_cp = 0
+				hidden_next = 0
 				if lap > U.LAPS:
 					finish_race(t)
 					return
 				sfx.chime(false)
 				ui.toast("Lap " + str(lap) + " / " + str(U.LAPS))
+
+
+func _track_hidden_gates(prev: int) -> void:
+	var g := track.hidden_gates()
+	if hidden_next >= g.size():
+		return
+	var gate: int = g[hidden_next]
+	if crossed(prev, car.idx, gate, track.n):
+		if absf(car.lat) < TrackData.HIDDEN_LAT:
+			hidden_next += 1
+		return
+	# well past a gate that was never driven through: the player left the track and rejoined further on
+	var ahead := car.idx - gate
+	if ahead > N_WARN_AHEAD and ahead < track.n / 4:
+		_warn_cut()
+
+
+func _warn_cut() -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - cut_warn_t > 2.5:
+		cut_warn_t = now
+		ui.toast("Track cut: go back through the missed section")
+		haptic(30)
 
 
 func collect_pads() -> void:
@@ -651,6 +682,8 @@ func restart(quick: bool) -> void:
 	race_steps = 0
 	lap = 1
 	next_cp = 0
+	hidden_next = 0
+	cut_warn_t = 0.0
 	splits = []
 	ghost_rec = []
 	snapshot = null
@@ -694,6 +727,7 @@ func respawn() -> void:
 		car.level = 0
 		car.hop_t = 0.0
 		car.idx = snapshot.idx
+		hidden_next = snapshot.hn
 		car.boost_t = 0.0
 		car.px = car.x
 		car.pz = car.z

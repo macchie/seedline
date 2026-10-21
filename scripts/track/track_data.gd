@@ -23,7 +23,44 @@ var complexity: float = 0.0
 var name: String = ""
 var cps := PackedInt32Array()
 var medals: Dictionary = {}
-var pads: Array = []   # {i: sample index, lat: lateral offset, big: bool}
+var pads: Array = []
+var _hidden := PackedInt32Array()
+var _hidden_built := false   # {i: sample index, lat: lateral offset, big: bool}
+
+
+## Invisible gates along the lap, in order. A lap only counts when every one was driven through,
+## so cutting across the infield or skipping a section never pays. Derived from the track, not generated.
+const HIDDEN_SPACING := 40        # samples between gates (100 m)
+const HIDDEN_LAT := U.HW + 9.0    # how far from the centreline a gate still counts
+
+func hidden_gates() -> PackedInt32Array:
+	if _hidden_built:
+		return _hidden
+	_hidden_built = true
+	var out := PackedInt32Array()
+	var c := HIDDEN_SPACING / 2
+	while c < n:
+		var near := false
+		for q in [0] + Array(cps):
+			var d := absi(c - int(q))
+			near = near or mini(d, n - d) < 6
+		if not near:
+			out.append(c)
+		c += HIDDEN_SPACING
+	_hidden = out
+	return _hidden
+
+
+## Hidden gates that lie before the given sample (0 means the finish line, so all of them).
+func hidden_before(target: int) -> int:
+	var g := hidden_gates()
+	if target <= 0:
+		return g.size()
+	var k := 0
+	for c in g:
+		if c < target:
+			k += 1
+	return k
 
 
 ## Tangents, normals and smoothed curvature from a resampled centreline (port of analyze()).
