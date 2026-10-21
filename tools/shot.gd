@@ -1,6 +1,6 @@
 extends SceneTree
 ## Dev helper: run the game, optionally drive it, and save screenshots.
-## godot --path . --script res://tools/shot.gd -- seed=K7Q2XM out=/tmp/a.png frames=90 mode=menu|garage|tracks|options|seed|race|finish drive=1
+## godot --path . --script res://tools/shot.gd -- seed=K7Q2XM out=/tmp/a.png frames=90 mode=menu|garage|tracks|options|seed|race|finish recent_preview=1
 
 var args := {}
 var main
@@ -38,6 +38,11 @@ func _process(delta: float) -> bool:
 		if mode == "garage":
 			main.set_tab("garage")
 		elif mode == "tracks" or mode == "saved":
+			if args.has("recent_preview"):
+				main.favs = []
+				main.ui.render_favs()
+				main.recent_tracks = [{"seed": main.track.seed, "name": main.track.name, "env": main.track.env_key}]
+				main.ui.render_recent_tracks()
 			main.set_tab("tracks")
 		elif mode == "options":
 			main.set_tab("options")

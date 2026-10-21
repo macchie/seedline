@@ -114,6 +114,7 @@ var recent_track_empty: Label
 var fav_track_cache := {}
 var fav_track_cache_order: Array[String] = []
 var fav_preview_views: Array[Dictionary] = []
+var recent_preview_views: Array[Dictionary] = []
 var fav_preview_revision := 0
 var fav_preview_task_running := false
 const FAV_TRACK_CACHE_LIMIT := 32
@@ -2392,6 +2393,8 @@ func render_favs() -> void:
 func render_recent_tracks() -> void:
 	if not recent_track_list:
 		return
+	fav_preview_revision += 1
+	recent_preview_views.clear()
 	for child in recent_track_list.get_children():
 		recent_track_list.remove_child(child)
 		child.queue_free()
@@ -2410,9 +2413,20 @@ func render_recent_tracks() -> void:
 				env_s = str(parsed.env)
 		var compact_row := size.x < 360.0
 		var row := glass(PANEL2, Color(0, 0, 0, 0), 12.0)
-		row.custom_minimum_size = Vector2(0, 66)
-		row.pad(10, 8, 10, 8)
+		row.custom_minimum_size = Vector2(0, 72 if compact_row else 76)
+		row.pad(8, 7, 8, 7)
 		var h := hbox(6 if compact_row else 10)
+		var preview_box := glass(Color(0, 0, 0, 0.26), LINE, 9.0)
+		var preview_size := 50.0 if compact_row else 62.0
+		preview_box.custom_minimum_size = Vector2(preview_size, preview_size)
+		preview_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		preview_box.pad(2, 2, 2, 2)
+		var preview := MapView.new()
+		preview.preview = true
+		preview.custom_minimum_size = Vector2(preview_size - 4.0, preview_size - 4.0)
+		preview_box.add_child(preview)
+		h.add_child(preview_box)
+		var map_accent := U.css(Envs.DATA[env_s].accent) if Envs.DATA.has(env_s) else accent
 		var details := tap(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 8.0)
 		details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		details.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -2446,6 +2460,14 @@ func render_recent_tracks() -> void:
 		watch.focus_neighbor_left = watch.get_path_to(details)
 		row.add_child(h)
 		recent_track_list.add_child(row)
+		recent_preview_views.append({
+			"map": preview,
+			"seed": seed_s,
+			"env": env_s,
+			"accent": map_accent,
+		})
+	if game.menu_tab == "tracks":
+		call_deferred("_populate_fav_previews")
 
 
 func _populate_fav_previews() -> void:
@@ -2453,7 +2475,8 @@ func _populate_fav_previews() -> void:
 		return
 	fav_preview_task_running = true
 	var revision := fav_preview_revision
-	for entry in fav_preview_views:
+	var previews: Array = fav_preview_views + recent_preview_views
+	for entry in previews:
 		if revision != fav_preview_revision or game.menu_tab != "tracks":
 			break
 		var preview := entry.map as MapView
@@ -2510,7 +2533,7 @@ func _focus_tracks_entry() -> void:
 	if fav_list.get_child_count() > 0:
 		target = fav_list.get_child(0).get_child(0).get_child(1)
 	elif recent_track_list.get_child_count() > 0:
-		target = recent_track_list.get_child(0).get_child(0).get_child(0)
+		target = recent_track_list.get_child(0).get_child(0).get_child(1)
 	else:
 		target = tabs.filter(func(tab): return tab.get_meta("v") == "tracks")[0]
 	if target and target.is_visible_in_tree():
