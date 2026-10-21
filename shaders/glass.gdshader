@@ -13,6 +13,10 @@ uniform float dash = 0.0;               // dashed border period in px (0 = solid
 uniform vec4 inset_col = vec4(0.0);     // inner bottom shade (swatch bevel)
 uniform float inset_h = 0.0;
 uniform float conic = 0.0;              // custom-colour swatch: conic-gradient(#f43,#fb3,#4d6,#3bf,#86f,#f4b,#f43)
+uniform vec4 glow_col = vec4(0.0);      // outer neon glow colour (needs `inset` room inside the rect)
+uniform float glow = 0.0;              // glow falloff radius in px
+uniform float inset = 0.0;             // shrink the panel inside the rect so the glow has room
+uniform float sheen = 0.0;             // glossy highlight added to the top of the panel (0 = none)
 varying vec2 lp;
 
 void vertex() {
@@ -20,8 +24,8 @@ void vertex() {
 }
 
 void fragment() {
-	vec2 half_size = rect_size * 0.5;
-	vec2 p = lp - half_size;
+	vec2 half_size = rect_size * 0.5 - inset;
+	vec2 p = lp - rect_size * 0.5;
 	float rr = p.x < 0.0 ? (p.y < 0.0 ? radius.x : radius.w) : (p.y < 0.0 ? radius.y : radius.z);
 	rr = min(rr, min(half_size.x, half_size.y));
 	vec2 q = abs(p) - half_size + rr;
@@ -36,6 +40,10 @@ void fragment() {
 	}
 	if (inset_h > 0.0 && lp.y > rect_size.y - inset_h) {
 		fill.rgb = mix(fill.rgb, inset_col.rgb, inset_col.a);
+	}
+	if (sheen > 0.0) {
+		float sy = clamp((lp.y - inset) / max(rect_size.y - inset * 2.0, 1.0), 0.0, 1.0);
+		fill.rgb += pow(1.0 - sy, 3.0) * sheen;
 	}
 	vec3 rgb = fill.rgb;
 	float a = fill.a;
@@ -54,5 +62,12 @@ void fragment() {
 		a = max(a, b * border_col.a);
 	}
 	a *= clamp(0.5 - d, 0.0, 1.0);
+	if (glow > 0.0 && glow_col.a > 0.0) {
+		float t = clamp(1.0 - d / glow, 0.0, 1.0);
+		float g_a = t * t * glow_col.a;
+		float out_a = a + g_a * (1.0 - a);
+		rgb = (rgb * a + glow_col.rgb * g_a * (1.0 - a)) / max(out_a, 0.0001);
+		a = out_a;
+	}
 	COLOR = vec4(rgb, a) * COLOR;
 }

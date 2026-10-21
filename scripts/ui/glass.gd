@@ -11,6 +11,10 @@ var blur := 0.0
 var dash := 0.0
 var inset_col := Color(0, 0, 0, 0)
 var inset_h := 0.0
+var glow_col := Color(0, 0, 0, 0)
+var glow := 0.0
+var inset := 0.0
+var sheen := 0.0
 var _mat: ShaderMaterial
 
 static var _shader: Shader
@@ -56,6 +60,10 @@ func _sync() -> void:
 	_mat.set_shader_parameter("dash", dash)
 	_mat.set_shader_parameter("inset_col", inset_col)
 	_mat.set_shader_parameter("inset_h", inset_h)
+	_mat.set_shader_parameter("glow_col", glow_col)
+	_mat.set_shader_parameter("glow", glow)
+	_mat.set_shader_parameter("inset", inset)
+	_mat.set_shader_parameter("sheen", sheen)
 	queue_redraw()
 
 

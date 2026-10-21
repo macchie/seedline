@@ -1,6 +1,6 @@
 extends SceneTree
 ## Dev helper: run the game, optionally drive it, and save screenshots.
-## godot --path . --script res://tools/shot.gd -- seed=K7Q2XM out=/tmp/a.png frames=90 mode=menu|garage|tracks|options|seed|race|finish recent_preview=1
+## godot --path . --script res://tools/shot.gd -- seed=K7Q2XM out=/tmp/a.png frames=90 mode=menu|garage|tracks|options|seed|race|finish recent_preview=1 res=412x915
 
 var args := {}
 var main
@@ -27,9 +27,21 @@ func _init() -> void:
 	root.add_child(main)
 
 
+func _force_res() -> void:
+	# Pin the logical UI size to the pixel window so mobile/desktop breakpoints can be shot.
+	var wh = args.res.split("x")
+	DisplayServer.window_set_size(Vector2i(int(wh[0]), int(wh[1])))
+	root.size = Vector2i(int(wh[0]), int(wh[1]))
+	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
+	main.ui.safe = {"t": 0.0, "b": 0.0, "l": 16.0, "r": 16.0}
+	main.ui.relayout()
+
+
 func _process(delta: float) -> bool:
 	frame += 1
 	var mode: String = args.get("mode", "menu")
+	if frame == 2 and args.has("res") and args.res.split("x").size() == 2:
+		_force_res()
 	if frame == 4 and args.has("touch"):
 		main.touch_ui = true
 		main.ui.set_touch(true)

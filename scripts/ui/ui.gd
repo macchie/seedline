@@ -31,6 +31,7 @@ var brand: VBoxContainer
 var wm_a: Label
 var wm_b: Label
 var tag: Label
+var brand_rule: Glass
 var btn_sound: Tap
 var ic_sound: Icon
 var sheet: Glass
@@ -566,6 +567,10 @@ func _build_menu() -> void:
 	wm.add_child(wm_a)
 	wm.add_child(wm_b)
 	brand.add_child(wm)
+	# accent speed-rule under the wordmark (Rocket League-style highlight)
+	brand_rule = glass(accent, Color(0, 0, 0, 0), 2.0)
+	brand_rule.custom_minimum_size = Vector2(0, 3)
+	brand.add_child(brand_rule)
 	tag = L("Procedural time trial", "body", 600, 10, Color(1, 1, 1, 0.7), false, 0.24, true)
 	tag.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
 	tag.add_theme_constant_override("shadow_outline_size", 6)
@@ -718,21 +723,30 @@ func _build_menu() -> void:
 	_build_garage_pane(panes_box)
 	_build_tracks_pane(panes_box)
 	_build_options_pane(panes_box)
-	# play
-	btn_play = tap(accent, Color(0, 0, 0, 0), 14.0)
-	btn_play.custom_minimum_size = Vector2(0, 52)
-	var prow := hbox(12)
+	# play — the hero button (Rocket League style: glossy accent slab with a neon glow)
+	btn_play = tap(accent, Color(0, 0, 0, 0), 16.0)
+	btn_play.custom_minimum_size = Vector2(0, 76)
+	btn_play.pad(14, 13, 14, 15)
+	var prow := hbox(14)
 	prow.alignment = BoxContainer.ALIGNMENT_CENTER
-	var race := L("Race", "display", 800, 24, on_accent, true, 0.08, true)
-	race.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	var enter := L("ENTER / A / CROSS", "mono", 700, 10, Color(on_accent, 0.55), false, 0.05)
-	enter.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	prow.add_child(race)
-	prow.add_child(enter)
-	btn_play.add_child(prow)
+	var ptext := vbox(1)
+	ptext.alignment = BoxContainer.ALIGNMENT_CENTER
+	var race := L("RACE", "display", 800, 25, on_accent, true, 0.12, true)
+	race.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var enter := L("ENTER / A / CROSS", "mono", 700, 10, Color(on_accent, 0.62), false, 0.08)
+	enter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ptext.add_child(race)
+	ptext.add_child(enter)
+	var chev := L("»", "display", 900, 30, Color(on_accent, 0.85), true)
+	chev.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	prow.add_child(ptext)
+	prow.add_child(chev)
+	btn_play.add_child(center(prow))
 	btn_play.set_meta("race", race)
 	btn_play.set_meta("enter", enter)
+	btn_play.set_meta("chev", chev)
 	btn_play.pressed.connect(func(): game.start_race())
+	_style_play()
 	sheet_box.add_child(btn_play)
 
 
@@ -1744,6 +1758,20 @@ func relayout() -> void:
 		pm = 60.0
 	trackhead.visible = game.menu_tab == "drive"
 	btn_play.visible = game.menu_tab == "drive"
+	# the hero Race button shrinks on short landscape screens so it never crowds the action row
+	var race_l := btn_play.get_meta("race") as Label
+	(btn_play.get_meta("enter") as Label).visible = not landscape_short
+	(btn_play.get_meta("chev") as Label).visible = not landscape_short
+	if landscape_short:
+		btn_play.custom_minimum_size.y = 50.0
+		btn_play.inset = 8.0
+		btn_play.pad(10, 8, 10, 9)
+		restyle(race_l, 19.0)
+	else:
+		btn_play.custom_minimum_size.y = 76.0
+		btn_play.inset = 14.0
+		btn_play.pad(14, 13, 14, 15)
+		restyle(race_l, 25.0)
 	# on phones the track head scrolls with the tab content so the body keeps a usable height
 	var head_scroll := not desktop
 	var head_iw := (W - sl - sr) if not landscape_short else (minf(360.0, 0.46 * W) - 32.0)
@@ -1845,8 +1873,7 @@ func relayout() -> void:
 	# overlays
 	toast_box.size = toast_box.get_combined_minimum_size()
 	toast_box.position = Vector2((W - toast_box.size.x) / 2.0, st + 70.0)
-	stats_lbl.size = stats_lbl.get_combined_minimum_size()
-	stats_lbl.position = Vector2(W - sr - stats_lbl.size.x, H - sb - 6.0 - stats_lbl.size.y)
+	_place_stats()
 
 
 ## Stack the sheet's blocks by hand (flex column: head, tabs, scrolling body, play button pinned to the bottom)
@@ -2085,9 +2112,14 @@ func set_accent(a: Color, on: Color) -> void:
 	accent = a
 	on_accent = on
 	wm_b.add_theme_color_override("font_color", accent)
-	btn_play.style(accent, Color(0, 0, 0, 0), 14.0)
-	(btn_play.get_meta("race") as Label).add_theme_color_override("font_color", on_accent)
-	(btn_play.get_meta("enter") as Label).add_theme_color_override("font_color", Color(on_accent, 0.55))
+	if brand_rule:
+		brand_rule.fill_top = accent
+		brand_rule.fill_bot = accent
+		brand_rule.glow_col = Color(accent, 0.6)
+		brand_rule._sync()
+	_style_play()
+	if tabs.size() > 0:
+		_sync_tab_styles()
 	_style_slider(sens_slider)
 	var f: StyleBoxFlat = seed_in.get_theme_stylebox("focus")
 	f.border_color = accent
@@ -2102,6 +2134,24 @@ func set_accent(a: Color, on: Color) -> void:
 	steer_fill.color = accent
 	sync_pedals(false, false)
 	sync_icons()
+
+
+## The hero Race button: glossy accent slab, bright top, deep bottom and a neon glow halo.
+func _style_play() -> void:
+	if not btn_play:
+		return
+	btn_play.fill_top = accent.lightened(0.16)
+	btn_play.fill_bot = accent.darkened(0.2)
+	btn_play.radius = Vector4(16, 16, 16, 16)
+	btn_play.glow_col = Color(accent, 0.55)
+	btn_play.glow = 18.0
+	btn_play.inset = 14.0
+	btn_play.sheen = 0.2
+	btn_play._tinted = false  # re-baseline so a focused button re-tints from the new accent gradient
+	btn_play.set_border_state(Color(1, 1, 1, 0.3), 1.5)
+	(btn_play.get_meta("race") as Label).add_theme_color_override("font_color", on_accent)
+	(btn_play.get_meta("enter") as Label).add_theme_color_override("font_color", Color(on_accent, 0.62))
+	(btn_play.get_meta("chev") as Label).add_theme_color_override("font_color", Color(on_accent, 0.85))
 
 
 func _all_taps(n: Node) -> Array:
@@ -2509,11 +2559,19 @@ func _cached_fav_track(seed: String, env_key: String) -> TrackData:
 	return track
 
 
-func set_tab(t: String) -> void:
+func _sync_tab_styles() -> void:
 	for b in tabs:
-		var on: bool = b.get_meta("v") == t
-		b.style(Color(accent, 0.18) if on else Color(1, 1, 1, 0.025), Color(1, 1, 1, 0.08) if on else Color(0, 0, 0, 0), 9.0)
+		var on: bool = b.get_meta("v") == game.menu_tab
+		# active tab reads as a glowing accent pill; inactive stays a quiet slot
+		b.inset = 4.0 if on else 0.0
+		b.glow = 11.0 if on else 0.0
+		b.glow_col = Color(accent, 0.4)
+		b.style(Color(accent, 0.2) if on else Color(1, 1, 1, 0.025), Color(accent, 0.65) if on else Color(0, 0, 0, 0), 9.0)
 		(b.get_meta("lbl") as Label).add_theme_color_override("font_color", FG if on else DIM)
+
+
+func set_tab(t: String) -> void:
+	_sync_tab_styles()
 	for k in panes:
 		panes[k].visible = k == t
 	tab_scroll.scroll_vertical = 0
@@ -2912,8 +2970,17 @@ func set_loading(on: bool) -> void:
 
 func set_stats(s: String) -> void:
 	stats_lbl.text = s
+	_place_stats()
+
+
+## Bottom-right FPS readout, lifted above the menu's bottom sheet on phones so it never sits under Race.
+func _place_stats() -> void:
 	stats_lbl.size = stats_lbl.get_combined_minimum_size()
-	stats_lbl.position = Vector2(size.x - maxf(16.0, safe.r) - stats_lbl.size.x, size.y - safe.b - 6.0 - stats_lbl.size.y)
+	var sr := maxf(16.0, safe.r)
+	var y: float = size.y - safe.b - 6.0 - stats_lbl.size.y
+	if menu_on and sheet and sheet.visible and sheet.position.x <= 1.0 and sheet.size.x >= size.x - 1.0:
+		y = sheet.position.y - 6.0 - stats_lbl.size.y
+	stats_lbl.position = Vector2(size.x - sr - stats_lbl.size.x, y)
 
 
 # ------------------------------------------------------------------ touch controls
