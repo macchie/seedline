@@ -1,0 +1,99 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Seedline"
+config/description="Seeded time-trial racing: every code is a track."
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+boot_splash/bg_color=Color(0.0431, 0.051, 0.0706, 1)
+boot_splash/show_image=false
+config/icon="res://icon.svg"
+
+[audio]
+
+driver/output_latency=30
+
+[debug]
+
+gdscript/warnings/unused_variable=0
+gdscript/warnings/unused_parameter=0
+gdscript/warnings/shadowed_variable=0
+gdscript/warnings/shadowed_variable_base_class=0
+gdscript/warnings/integer_division=0
+gdscript/warnings/narrowing_conversion=0
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/handheld/orientation=6
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
+lights_and_shadows/directional_shadow/size=2048
+lights_and_shadows/directional_shadow/size.mobile=1024
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality.mobile=1
+environment/defaults/default_clear_color=Color(0.909804, 0.678431, 0.486275, 1)
+
+[shader_globals]
+
+g_hemi_sky={
+"type": "vec3",
+"value": Vector3(1, 1, 1)
+}
+g_hemi_ground={
+"type": "vec3",
+"value": Vector3(0.27, 0.27, 0.27)
+}
+g_hemi_i={
+"type": "float",
+"value": 0.8
+}
+g_rim={
+"type": "float",
+"value": 0.2
+}
+g_rim_col={
+"type": "vec3",
+"value": Vector3(1, 0.956, 0.878)
+}
+g_time={
+"type": "float",
+"value": 0.0
+}
+g_sun={
+"type": "vec3",
+"value": Vector3(1, 1, 1)
+}
+g_fog_col={
+"type": "vec3",
+"value": Vector3(0.9, 0.7, 0.5)
+}
+g_fog={
+"type": "vec2",
+"value": Vector2(200, 400)
+}
+g_sky_top={
+"type": "vec3",
+"value": Vector3(0.5, 0.7, 0.9)
+}
+g_sky_hor={
+"type": "vec3",
+"value": Vector3(0.8, 0.85, 0.9)
+}
+g_sky_gnd={
+"type": "vec3",
+"value": Vector3(0.4, 0.4, 0.4)
+}

@@ -1,0 +1,19 @@
+# Godot 4 editor and imported resource cache
+.godot/
+
+# Export configuration may contain platform-specific credentials
+/export.cfg
+/export_presets.cfg
+
+# Exported builds
+/build/
+/dist/
+*.pck
+
+# Godot Mono/.NET generated files (if the project adds C#)
+.mono/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
