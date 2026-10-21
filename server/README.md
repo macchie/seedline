@@ -25,6 +25,7 @@ The script copies the module into `/nakama/data/modules` of the container and re
 
 - **Leaderboards**: one per track, id `track:<ENV>:<SEED>`, authoritative (clients cannot write scores), ascending, `best` operator, score in milliseconds. Created on the first accepted run.
 - **Track statistics** (storage `track_stats`, public read): runs, unique players, best time, total time, first and last play.
+- **Race ghosts** (storage `track_ghosts`, public read): one validated best-run path per user and track. Paths are flattened integer `(x decimeters, z decimeters, heading milliradians)` triples sampled at 5 Hz. The server limits paths to 5,000 points and track info returns up to 10 matching paths for the fastest other players, scanning at most 100 leaderboard records. Older leaderboard entries without a saved path are skipped.
 - **Sessions** (storage `sessions`): one record per app launch with platform, version, start, last seen and duration. Active users come from a presence room (`seedline` chat channel) that the client joins over the WebSocket. Nakama's Lua runtime has no session end event, so duration is derived from the heartbeat.
 - **Global counters** are sharded (8 shards) to avoid write contention.
 
@@ -32,7 +33,7 @@ The script copies the module into `/nakama/data/modules` of the container and re
 
 A run is rejected unless: seed and environment match strict patterns; time is an integer between 20 s and 1 h; laps equal 3; track length is 1500 to 5000 m; the average speed stays below 85 m/s (the kart tops out at 84 m/s while boosting); splits are strictly increasing, a multiple of 3, and the last one equals the finish time. Each user may submit 30 runs per 10 minutes. Submissions carry a client generated `run_id`, so retries never double count.
 
-This is plausibility checking, not replay verification. A determined cheater can still submit a fast but plausible time. If that matters, upload the recorded inputs and re-simulate on the server.
+This is plausibility checking, not replay verification. A determined cheater can still submit a fast but plausible time or a fabricated path. If that matters, upload the recorded inputs and re-simulate on the server.
 
 ## Production checklist
 

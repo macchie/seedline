@@ -206,7 +206,7 @@ func fetch_track_info(seed: String, env: String) -> void:
 		track_info_ready.emit(seed, env, {"error": true})
 
 
-func submit_run(seed: String, env: String, time_s: float, length_m: float, splits: Array, laps: int) -> void:
+func submit_run(seed: String, env: String, time_s: float, length_m: float, splits: Array, laps: int, ghost: Array = []) -> void:
 	if not eligible(seed):
 		return
 	var sp: Array = []
@@ -222,6 +222,8 @@ func submit_run(seed: String, env: String, time_s: float, length_m: float, split
 		"splits": sp,
 		"version": str(ProjectSettings.get_setting("application/config/version", "")),
 	}
+	if ghost.size() >= 6 and ghost.size() % 3 == 0:
+		entry.ghost = ghost.duplicate()
 	var q: Array = Store.get_value(QUEUE_KEY, [])
 	q.append(entry)
 	while q.size() > QUEUE_MAX:

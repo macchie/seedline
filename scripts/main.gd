@@ -6,6 +6,7 @@ const DRIFT_ENABLED := false
 # Extra pickup reach (m) on top of each pad's radius, roughly the car's half-length.
 const PAD_TOLERANCE := 3
 const N_WARN_AHEAD := 12
+const GHOST_FLEET_SCRIPT = preload("res://scripts/world/rival_ghost_fleet.gd")
 
 # --- persistent options (same keys and defaults as localStorage in the web build)
 var opts := {"gfx": "high", "sound": true, "side": "left", "sensV": 75, "stats": ""}
@@ -28,6 +29,7 @@ var ui: Ui
 var world: World = null
 var car_v: CarModel
 var ghost_v: CarModel
+var rival_ghost_fleet: RivalGhostFleet
 var fx: Fx
 var sfx: Sfx
 
@@ -45,6 +47,8 @@ var splits: Array = []
 var net: Net
 var run_info = null
 var ghost_rec: Array = []
+var server_ghost_rec: Array = []
+var server_ghost_complete := true
 var run_inputs: Array = []
 var snapshot = null
 var cd_t := 0.0
@@ -187,6 +191,8 @@ func _build_scene() -> void:
 	ghost_v = CarModel.new(true)
 	ghost_v.visible = false
 	add_child(ghost_v)
+	rival_ghost_fleet = GHOST_FLEET_SCRIPT.new()
+	add_child(rival_ghost_fleet)
 	car_v.apply_cfg(car_cfg.color, car_cfg.finish, car_cfg.boost_color)
 	fx = Fx.new()
 	add_child(fx)
@@ -277,6 +283,8 @@ func load_track(seed_str: String, env_key = null) -> void:
 		return
 	if env_key != null and Envs.DATA.has(env_key):
 		p.env = env_key
+	if rival_ghost_fleet != null:
+		rival_ghost_fleet.set_ghosts([])
 	env = Envs.variant(p.env, Envs.is_night_seed(p.seed))
 	track = TrackGen.generate(p.seed, p.env)
 	build_world()
@@ -295,6 +303,7 @@ func load_track(seed_str: String, env_key = null) -> void:
 	menu_s = 0.0
 	fx.clear_skids()
 	ui.refresh_menu()
+	fetch_leaderboard()
 
 
 func build_world() -> void:
@@ -623,6 +632,13 @@ func physics_step() -> void:
 		ghost_rec.append(U.jround(car.x * 100.0) / 100.0)
 		ghost_rec.append(U.jround(car.z * 100.0) / 100.0)
 		ghost_rec.append(U.jround(car.h * 1000.0) / 1000.0)
+	if racing and race_steps % 24 == 0:
+		if server_ghost_rec.size() / 3 < 5000:
+			server_ghost_rec.append(int(round(car.x * 10.0)))
+			server_ghost_rec.append(int(round(car.z * 10.0)))
+			server_ghost_rec.append(int(round(wrapf(car.h, -PI, PI) * 1000.0)))
+		else:
+			server_ghost_complete = false
 	race_steps += 1
 	_track_hidden_gates(prev)
 	if absf(car.lat) < U.HW + 6.0:
@@ -736,6 +752,8 @@ func restart(quick: bool) -> void:
 	cut_warn_t = 0.0
 	splits = []
 	ghost_rec = []
+	server_ghost_rec = []
+	server_ghost_complete = true
 	run_inputs = []
 	run_start_boost_t = 0.0
 	run_start_boost_amt = CarSim.BOOST_START
@@ -845,7 +863,7 @@ func finish_race(t: float) -> void:
 				Store.set_value("favs", favs)
 	run_info = null
 	if net.eligible(track.seed):
-		net.submit_run(track.seed, track.env_key, t, track.length, splits, U.LAPS)
+		net.submit_run(track.seed, track.env_key, t, track.length, splits, U.LAPS, server_ghost_rec if server_ghost_complete else [])
 	var seed_now := track.seed
 	get_tree().create_timer(1.3).timeout.connect(func():
 		if state != "finished" or track.seed != seed_now:
@@ -888,6 +906,7 @@ func _on_net_status(s: String) -> void:
 func _on_track_info(seed: String, env: String, info: Dictionary) -> void:
 	if track == null or seed != track.seed or env != track.env_key:
 		return
+	rival_ghost_fleet.set_ghosts(info.get("ghosts", []))
 	ui.render_leaderboard(info)
 
 
@@ -895,6 +914,7 @@ func _on_run_submitted(seed: String, env: String, info: Dictionary) -> void:
 	if track == null or seed != track.seed or env != track.env_key:
 		return
 	run_info = info
+	rival_ghost_fleet.set_ghosts(info.get("ghosts", []))
 	ui.render_leaderboard(info)
 	if ui.finish_modal.visible:
 		ui.set_finish_rank(info)
@@ -1088,6 +1108,7 @@ func set_finish(f: String) -> void:
 
 func _on_account_changed() -> void:
 	ui.sync_account()
+	fetch_leaderboard()
 
 
 ## The account's saved car replaced the local one (after signing in, or a change from another device).
@@ -1363,6 +1384,8 @@ func _update_ghost() -> void:
 		else:
 			ghost_v.visible = false
 			mini_ghost = null
+		var live_race := state == "race" or state == "finished"
+		rival_ghost_fleet.update_at(race_steps * U.STEP if live_race else -1.0, track)
 	else:
 		ghost_v.visible = false
 		mini_ghost = null

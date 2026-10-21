@@ -9,6 +9,7 @@
 
   Data model:
     leaderboard  "track:<ENV>:<SEED>"   authoritative, ascending, operator "best", score = time in ms
+    track_ghosts (user, public read)    validated best-run path per user and track
     storage      track_stats   (system, public read)   runs / unique players / best / total time per track
                  track_played  (user)                  first/last play and personal numbers per user and track
                  runs          (user)                  one record per accepted run, key = client run id (idempotency)
@@ -34,6 +35,10 @@ local CFG = {
   rate_window_s = 600,
   rate_max_runs = 30,
   top_limit = 10,
+  ghost_limit = 10,
+  ghost_scan_limit = 100,
+  ghost_max_points = 5000,
+  ghost_sample_hz = 5,
   room = "seedline",
   shards = 8,
   occ_retries = 10,
@@ -225,6 +230,27 @@ local function validate_run(p)
     fail("splits do not match the time", E_INVALID)
   end
 
+  local ghost = nil
+  if p.ghost ~= nil then
+    if type(p.ghost) ~= "table" or #p.ghost < 6 or #p.ghost % 3 ~= 0 or #p.ghost / 3 > CFG.ghost_max_points then
+      fail("invalid ghost path", E_INVALID)
+    end
+    ghost = {}
+    local count = 0
+    for i, value in ipairs(p.ghost) do
+      local component = (i - 1) % 3
+      local limit = component == 2 and 3142 or 1000000
+      if not is_number(value) or value ~= math.floor(value) or math.abs(value) > limit then
+        fail("invalid ghost path", E_INVALID)
+      end
+      count = count + 1
+      ghost[count] = value
+    end
+    if count ~= #p.ghost then
+      fail("invalid ghost path", E_INVALID)
+    end
+  end
+
   return {
     lb_id = lb_id,
     seed = p.seed,
@@ -233,6 +259,7 @@ local function validate_run(p)
     time_ms = p.time_ms,
     length_m = p.length_m,
     version = type(p.version) == "string" and p.version:sub(1, 32) or "",
+    ghost = ghost,
   }
 end
 
@@ -315,30 +342,35 @@ local function track_stats(lb_id)
 end
 
 local function track_info(lb_id, uid)
-  local result = { stats = track_stats(lb_id), top = {}, me = nil }
-  local ok, records, owner_records = pcall(nk.leaderboard_records_list, lb_id, { uid }, CFG.top_limit)
+  local result = { stats = track_stats(lb_id), top = {}, me = nil, ghosts = {} }
+  local ok, records, owner_records = pcall(nk.leaderboard_records_list, lb_id, { uid }, CFG.ghost_scan_limit)
   if not ok then
     return result
   end
   local ids, seen = {}, {}
-  local function collect(list)
+  local function collect(list, limit)
     for _, r in ipairs(list or {}) do
       if not seen[r.owner_id] then
         seen[r.owner_id] = true
         ids[#ids + 1] = r.owner_id
+        if limit ~= nil and #ids >= limit then
+          return
+        end
       end
     end
   end
-  collect(records)
+  collect(records, CFG.top_limit)
   collect(owner_records)
   local names = display_names(ids)
-  for _, r in ipairs(records or {}) do
-    result.top[#result.top + 1] = {
-      rank = r.rank,
-      user_id = r.owner_id,
-      name = names[r.owner_id] or r.username or "racer",
-      time_ms = r.score,
-    }
+  for i, r in ipairs(records or {}) do
+    if i <= CFG.top_limit then
+      result.top[#result.top + 1] = {
+        rank = r.rank,
+        user_id = r.owner_id,
+        name = names[r.owner_id] or r.username or "racer",
+        time_ms = r.score,
+      }
+    end
   end
   if owner_records ~= nil and #owner_records > 0 then
     local r = owner_records[1]
@@ -362,6 +394,38 @@ local function track_info(lb_id, uid)
       end
     end
     result.me = { rank = rank or 0, time_ms = r.score, name = names[uid] or r.username or "racer" }
+  end
+
+  local reads, candidates = {}, {}
+  for _, r in ipairs(records or {}) do
+    if r.owner_id ~= uid and #candidates < CFG.ghost_scan_limit then
+      candidates[#candidates + 1] = r
+      reads[#reads + 1] = {
+        collection = "track_ghosts",
+        key = lb_id,
+        user_id = r.owner_id,
+      }
+    end
+  end
+  if #reads > 0 then
+    local read_ok, objects = pcall(nk.storage_read, reads)
+    if not read_ok then
+      nk.logger_warn("track ghost lookup failed: " .. tostring(objects))
+    else
+      local paths = {}
+      for _, object in ipairs(objects or {}) do
+        paths[object.user_id] = object.value
+      end
+      for _, r in ipairs(candidates) do
+        if #result.ghosts >= CFG.ghost_limit then
+          break
+        end
+        local doc = paths[r.owner_id]
+        if doc ~= nil and doc.time_ms == r.score and type(doc.path) == "table" then
+          result.ghosts[#result.ghosts + 1] = { time_ms = r.score, path = doc.path }
+        end
+      end
+    end
   end
   return result
 end
@@ -477,6 +541,23 @@ local function rpc_submit_run(context, payload)
     ensure_leaderboard(run.lb_id, run.seed, run.env)
     local names = display_names({ uid })
     nk.leaderboard_record_write(run.lb_id, uid, names[uid] or context.username, run.time_ms, 0, { v = run.version })
+    if run.ghost ~= nil then
+      local ghost_ok, ghost_err = pcall(function()
+        update_doc("track_ghosts", run.lb_id, uid, PERM_PUBLIC, function(doc)
+          if doc ~= nil and run.time_ms >= (doc.time_ms or math.huge) then
+            return nil
+          end
+          return {
+            time_ms = run.time_ms,
+            path = run.ghost,
+            sample_hz = CFG.ghost_sample_hz,
+          }
+        end)
+      end)
+      if not ghost_ok then
+        nk.logger_warn("track ghost save failed: " .. tostring(ghost_err))
+      end
+    end
     local _, new_track = record_track_play(run, uid)
     counter_add("runs_total", 1)
     if new_track then
