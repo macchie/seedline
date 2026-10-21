@@ -1125,7 +1125,7 @@ func relayout() -> void:
 	else:
 		sheet.radius = Vector4(20, 20, 0, 0)
 		sheet.pad(sl, 12, sr, sb + 12.0)
-		var maxh := minf(H * (0.44 if garage else 0.6), 420.0 if garage else 560.0)
+		var maxh := minf(H * (0.44 if garage else 0.6), 420.0 if garage else 720.0)
 		var content := _sheet_content_height(W - sl - sr)
 		var h := minf(maxh, content + 24.0 + sb)
 		sheet.position = Vector2(0, H - h)

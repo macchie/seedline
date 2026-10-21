@@ -216,6 +216,10 @@ func _device_pixel_ratio() -> float:
 		s = DisplayServer.screen_get_dpi() / 160.0
 	elif OS.has_feature("windows") or OS.has_feature("linuxbsd"):
 		s = maxf(s, roundf(DisplayServer.screen_get_dpi() / 96.0 * 4.0) / 4.0)
+	# big windows (1080p+/4K desktop, console TVs) report 1x, so scale up until the logical size is ~1280x720
+	var win := get_window()
+	var by_size := minf(win.size.x / 1280.0, win.size.y / 720.0)
+	s = maxf(s, snappedf(clampf(by_size, 1.0, 4.0), 0.25))
 	return clampf(s, 1.0, 4.0)
 
 
