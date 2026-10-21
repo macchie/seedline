@@ -51,7 +51,7 @@ environment/defaults/default_clear_color=Color(0.909804, 0.678431, 0.486275, 1)
 [seedline]
 
 nakama/enabled=true
-nakama/host="127.0.0.1"
+nakama/host="192.168.1.123"
 nakama/port=7350
 nakama/ssl=false
 nakama/server_key="defaultkey"

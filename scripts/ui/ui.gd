@@ -105,6 +105,8 @@ var boost_swatches: Array = []
 var finish_seg: Array = []
 var fav_list: VBoxContainer
 var fav_empty: Label
+var recent_track_list: VBoxContainer
+var recent_track_empty: Label
 var fav_track_cache := {}
 var fav_track_cache_order: Array[String] = []
 var fav_preview_views: Array[Dictionary] = []
@@ -132,6 +134,7 @@ var picker_target := "paint"
 var menu_on := true
 var menu_tw: Tween
 var pause_resume: Tap
+var respawn_btn: Tap
 var finish_retry: Tap
 var _nav_stick := Vector2.ZERO
 var _nav_direction := Vector2i.ZERO
@@ -159,6 +162,11 @@ var mini: MapView
 var clock: VBoxContainer
 var timer_box: Glass
 var timer_lbl: Label
+var lap_info: HBoxContainer
+var replay_lbl: Label
+var replay_progress: ProgressBar
+var replay_mode := false
+var replay_exact := true
 var lap_n: Label
 var cp_n: Label
 var cp_t: Label
@@ -413,7 +421,18 @@ func _focus_direction(direction: Vector2i) -> void:
 		side = SIDE_TOP
 	else:
 		side = SIDE_BOTTOM
-	var next := owner.find_valid_focus_neighbor(side)
+	var neighbor_path: NodePath
+	if side == SIDE_LEFT:
+		neighbor_path = owner.focus_neighbor_left
+	elif side == SIDE_RIGHT:
+		neighbor_path = owner.focus_neighbor_right
+	elif side == SIDE_TOP:
+		neighbor_path = owner.focus_neighbor_top
+	else:
+		neighbor_path = owner.focus_neighbor_bottom
+	var next := owner.get_node_or_null(neighbor_path) as Control if not neighbor_path.is_empty() else null
+	if next == null or not next.is_visible_in_tree() or next.focus_mode == Control.FOCUS_NONE:
+		next = owner.find_valid_focus_neighbor(side)
 	if next == null:
 		next = owner.find_next_valid_focus() if direction.x > 0 or direction.y > 0 else owner.find_prev_valid_focus()
 	if modal_open() and next != null and not acct_modal.is_ancestor_of(next):
@@ -446,7 +465,7 @@ func _set_stick_direction(direction: Vector2i) -> void:
 
 
 func handle_joypad_event(ev: InputEvent) -> bool:
-	if game.state != "menu" and game.state != "paused" and not finish_modal.visible and not color_popup.visible and not modal_open():
+	if game.state != "menu" and game.state != "paused" and game.state != "replay" and not finish_modal.visible and not color_popup.visible and not modal_open():
 		return false
 	if ev is InputEventJoypadMotion:
 		if ev.axis == JOY_AXIS_LEFT_X:
@@ -485,6 +504,8 @@ func handle_joypad_event(ev: InputEvent) -> bool:
 				game.start_race()
 			elif game.state == "paused":
 				game.resume()
+			elif game.state == "replay":
+				game.toggle_pause()
 		_:
 			return false
 	return true
@@ -508,6 +529,8 @@ func _cancel_ui() -> void:
 		custom_swatch.grab_focus()
 	elif game.state == "paused":
 		game.resume()
+	elif game.state == "replay":
+		game.toggle_pause()
 	elif finish_modal.visible:
 		game.to_menu()
 
@@ -873,6 +896,13 @@ func _build_tracks_pane(parent: Control) -> void:
 	fav_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	fav_empty.custom_minimum_size = Vector2(0, 36)
 	p.add_child(fav_empty)
+	p.add_child(eyebrow("Last played"))
+	recent_track_list = vbox(6)
+	p.add_child(recent_track_list)
+	recent_track_empty = L("Tracks you race or watch will appear here.", "body", 400, 13, DIM)
+	recent_track_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	recent_track_empty.custom_minimum_size = Vector2(0, 36)
+	p.add_child(recent_track_empty)
 
 
 func _open_picker() -> void:
@@ -1080,6 +1110,7 @@ func _build_hud() -> void:
 	pb[0].pressed.connect(func(): game.toggle_pause())
 	top_l.add_child(pb[0])
 	var rb := icon_btn("respawn")
+	respawn_btn = rb[0]
 	rb[0].pressed.connect(func(): game.respawn())
 	top_l.add_child(rb[0])
 	hud.add_child(top_l)
@@ -1096,15 +1127,15 @@ func _build_hud() -> void:
 	timer_lbl = L("0:00.000", "mono", 700, 30, FG, false, -0.02)
 	timer_box.add_child(timer_lbl)
 	clock.add_child(center(timer_box))
-	var lap := hbox(10)
-	lap.alignment = BoxContainer.ALIGNMENT_CENTER
+	lap_info = hbox(10)
+	lap_info.alignment = BoxContainer.ALIGNMENT_CENTER
 	var li := Color(1, 1, 1, 0.85)
 	var lap_a := hbox(0)
 	lap_a.add_child(_shadowed(L("Lap ", "body", 600, 11, li, false, 0.16, true)))
 	lap_n = _shadowed(L("1", "body", 600, 11, FG, false, 0.16))
 	lap_a.add_child(lap_n)
 	lap_a.add_child(_shadowed(L("/" + str(U.LAPS), "body", 600, 11, li, false, 0.16)))
-	lap.add_child(lap_a)
+	lap_info.add_child(lap_a)
 	var cp_a := hbox(0)
 	cp_a.add_child(_shadowed(L("CP ", "body", 600, 11, li, false, 0.16, true)))
 	cp_n = _shadowed(L("0", "body", 600, 11, FG, false, 0.16))
@@ -1112,8 +1143,26 @@ func _build_hud() -> void:
 	cp_a.add_child(_shadowed(L("/", "body", 600, 11, li, false, 0.16)))
 	cp_t = _shadowed(L("4", "body", 600, 11, li, false, 0.16))
 	cp_a.add_child(cp_t)
-	lap.add_child(cp_a)
-	clock.add_child(lap)
+	lap_info.add_child(cp_a)
+	clock.add_child(lap_info)
+	replay_lbl = L("", "mono", 700, 10, FG, false, 0.08, true)
+	replay_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	replay_lbl.visible = false
+	clock.add_child(replay_lbl)
+	replay_progress = ProgressBar.new()
+	replay_progress.custom_minimum_size = Vector2(160, 8)
+	replay_progress.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	replay_progress.show_percentage = false
+	replay_progress.visible = false
+	var progress_bg := StyleBoxFlat.new()
+	progress_bg.bg_color = Color(1, 1, 1, 0.18)
+	progress_bg.set_corner_radius_all(4)
+	replay_progress.add_theme_stylebox_override("background", progress_bg)
+	var progress_fill := StyleBoxFlat.new()
+	progress_fill.bg_color = accent
+	progress_fill.set_corner_radius_all(4)
+	replay_progress.add_theme_stylebox_override("fill", progress_fill)
+	clock.add_child(replay_progress)
 	split_box = glass(PANEL, Color(0, 0, 0, 0), 9.0, 2.5)
 	split_box.pad(10, 6, 10, 6)
 	split_lbl = L("", "mono", 700, 17, FG)
@@ -1677,9 +1726,9 @@ func relayout() -> void:
 	clock.position = Vector2((W - clock.size.x) / 2.0, st + 12.0)
 	hint.size = hint.get_combined_minimum_size()
 	hint.position = Vector2(sl, H - sb - 16.0 - hint.size.y)
-	hint.visible = not touch
-	pad_boost.visible = touch
-	if not touch:
+	hint.visible = not touch and not replay_mode
+	pad_boost.visible = touch and not replay_mode
+	if not touch and not replay_mode:
 		var ms := clampf(0.14 * minf(W, H), 84.0, 120.0)
 		meter.size = Vector2(ms, ms)
 		meter.position = Vector2(W - sr - ms - 16.0, H - sb - ms - 16.0)
@@ -2006,6 +2055,7 @@ func refresh_menu() -> void:
 	game.fetch_leaderboard()
 	sync_icons()
 	render_favs()
+	render_recent_tracks()
 	prev_map.set_track(t, accent)
 	mini.set_track(t, accent)
 	relayout()
@@ -2115,6 +2165,31 @@ func set_net_status(text: String) -> void:
 		net_status_lbl.text = text
 
 
+func set_replay_mode(on: bool, best_time: float = 0.0, exact: bool = true) -> void:
+	replay_mode = on
+	replay_exact = exact
+	replay_lbl.visible = on
+	lap_info.visible = true
+	replay_progress.visible = on
+	replay_progress.max_value = maxf(best_time, 0.001)
+	replay_progress.value = 0.0
+	replay_lbl.text = ("BEST RUN REPLAY · " if exact else "LEGACY ROUTE PREVIEW · ") + U.fmt(best_time) if on else ""
+	pads.visible = hud.visible and touch and not on
+	hint.visible = hud.visible and not touch and not on
+	meter.visible = hud.visible and not on
+	respawn_btn.visible = not on
+	if on:
+		_hud_cache.erase("t")
+		hud_sync(true)
+	relayout()
+
+
+func set_replay_complete() -> void:
+	if replay_mode:
+		replay_lbl.text = ("BEST RUN COMPLETE · " if replay_exact else "ROUTE PREVIEW COMPLETE · ") + U.fmt(game.best.t)
+		replay_progress.value = replay_progress.max_value
+
+
 func set_finish_rank(info) -> void:
 	var me = info.get("me") if info is Dictionary else null
 	if me is Dictionary and int(me.get("rank", 0)) > 0:
@@ -2135,8 +2210,9 @@ func render_favs() -> void:
 	fav_empty.visible = favs.is_empty()
 	for f in favs:
 		var cur: bool = game.track != null and f.seed == game.track.seed
-		var row := tap(PANEL2, accent if cur else Color(0, 0, 0, 0), 12.0)
-		row.custom_minimum_size = Vector2(0, 76)
+		var compact_row := size.x < 360.0
+		var row := glass(PANEL2, accent if cur else Color(0, 0, 0, 0), 12.0)
+		row.custom_minimum_size = Vector2(0, 72 if compact_row else 76)
 		row.pad(8, 7, 8, 7)
 		var env_key := str(f.get("env", ""))
 		if not Envs.DATA.has(env_key):
@@ -2144,55 +2220,70 @@ func render_favs() -> void:
 			if parsed != null:
 				env_key = str(parsed.env)
 		var map_accent := U.css(Envs.DATA[env_key].accent) if Envs.DATA.has(env_key) else accent
-		var h := hbox(10)
+		var h := hbox(6 if compact_row else 10)
 		var preview_box := glass(Color(0, 0, 0, 0.26), LINE, 9.0)
-		preview_box.custom_minimum_size = Vector2(62, 62)
+		var preview_size := 50.0 if compact_row else 62.0
+		preview_box.custom_minimum_size = Vector2(preview_size, preview_size)
 		preview_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		preview_box.pad(2, 2, 2, 2)
 		var preview := MapView.new()
 		preview.preview = true
-		preview.custom_minimum_size = Vector2(58, 58)
+		preview.custom_minimum_size = Vector2(preview_size - 4.0, preview_size - 4.0)
 		preview_box.add_child(preview)
 		h.add_child(preview_box)
-		var nm := vbox(3)
-		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		h.add_theme_constant_override("separation", 6 if compact_row else 10)
+		var seed_s: String = str(f.seed)
+		var env_s := env_key
+		var nm := tap(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 8.0)
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		nm.alignment = BoxContainer.ALIGNMENT_CENTER
+		nm.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		var nb := L(str(f.name), "display", 800, 17, FG, true, 0.0, true)
 		nb.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		nb.clip_text = true
 		nb.custom_minimum_size = Vector2(1, 0)
-		nm.add_child(nb)
 		var seed_label := L(str(f.seed), "mono", 500, 11, DIM)
 		seed_label.clip_text = true
 		seed_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		seed_label.custom_minimum_size = Vector2(1, 0)
-		nm.add_child(seed_label)
-		h.add_child(nm)
+		var details := vbox(3)
+		details.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		details.alignment = BoxContainer.ALIGNMENT_CENTER
+		details.add_child(nb)
+		details.add_child(seed_label)
 		var b = Store.get_value("best5." + str(f.seed), null)
 		var bt = b.t if b != null else null
 		var med = CarSim.medal_for(bt, f.medals) if (f.has("medals") and f.get("v", 0) == 5 and f.medals is Dictionary) else null
-		var tm := hbox(6)
+		var meta := hbox(5)
 		if med != null:
-			var d := dot(MEDAL_COL[med])
+			var d := dot(MEDAL_COL[med], 6)
 			d.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			tm.add_child(d)
-		var tl := L(U.fmt(bt) if bt != null else "—", "mono", 500, 13, FG)
+			meta.add_child(d)
+		var tl := L(("BEST " + U.fmt(bt)) if bt != null else "BEST —", "mono", 500, 9 if compact_row else 11, FG)
 		tl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		tm.add_child(tl)
-		h.add_child(tm)
+		meta.add_child(tl)
+		details.add_child(meta)
+		nm.add_child(center(details))
+		nm.pressed.connect(func(): game.load_fav(seed_s, env_s))
+		h.add_child(nm)
+		var watch := tap(PANEL2, accent, 9.0)
+		watch.custom_minimum_size = Vector2(64 if compact_row else 62, 44)
+		watch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		watch.add_child(center(L("WATCH", "body", 700, 9, FG, false, 0.06, true)))
+		watch.pressed.connect(func(): game.replay_track(seed_s, env_s))
+		h.add_child(watch)
 		var x := tap(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 9.0)
-		x.custom_minimum_size = Vector2(34, 34)
+		x.custom_minimum_size = Vector2(42 if compact_row else 38, 44)
 		x.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		var xi := Icon.new("x", 14)
 		xi.color = DIM
 		x.add_child(center(xi))
-		var seed_s: String = f.seed
-		var env_s := env_key
 		x.pressed.connect(func(): game.remove_fav(seed_s))
 		h.add_child(x)
+		nm.focus_neighbor_right = nm.get_path_to(watch)
+		watch.focus_neighbor_left = watch.get_path_to(nm)
+		watch.focus_neighbor_right = watch.get_path_to(x)
+		x.focus_neighbor_left = x.get_path_to(watch)
 		row.add_child(h)
-		row.pressed.connect(func(): game.load_fav(seed_s, env_s))
 		fav_list.add_child(row)
 		fav_preview_views.append({
 			"map": preview,
@@ -2202,6 +2293,65 @@ func render_favs() -> void:
 		})
 	if game.menu_tab == "tracks":
 		call_deferred("_populate_fav_previews")
+
+
+func render_recent_tracks() -> void:
+	if not recent_track_list:
+		return
+	for child in recent_track_list.get_children():
+		recent_track_list.remove_child(child)
+		child.queue_free()
+	var tracks: Array = game.recent_tracks
+	recent_track_empty.visible = tracks.is_empty()
+	for entry in tracks:
+		if not entry is Dictionary:
+			continue
+		var seed_s := str(entry.get("seed", ""))
+		if seed_s == "":
+			continue
+		var env_s := str(entry.get("env", ""))
+		if not Envs.DATA.has(env_s):
+			var parsed = game.parse_seed(seed_s)
+			if parsed != null:
+				env_s = str(parsed.env)
+		var compact_row := size.x < 360.0
+		var row := glass(PANEL2, Color(0, 0, 0, 0), 12.0)
+		row.custom_minimum_size = Vector2(0, 66)
+		row.pad(10, 8, 10, 8)
+		var h := hbox(6 if compact_row else 10)
+		var details := tap(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 8.0)
+		details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		details.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		var name := L(str(entry.get("name", seed_s)), "display", 800, 15, FG, true, 0.0, true)
+		name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		name.clip_text = true
+		name.custom_minimum_size = Vector2(1, 0)
+		var seed_label := L(seed_s, "mono", 500, 10, DIM)
+		seed_label.clip_text = true
+		seed_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		seed_label.custom_minimum_size = Vector2(1, 0)
+		var detail_text := vbox(3)
+		detail_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		detail_text.alignment = BoxContainer.ALIGNMENT_CENTER
+		detail_text.add_child(name)
+		detail_text.add_child(seed_label)
+		details.add_child(center(detail_text))
+		details.pressed.connect(func(): game.load_fav(seed_s, env_s))
+		h.add_child(details)
+		var best_run = Store.get_value("best5." + seed_s, null)
+		var best_time = best_run.get("t") if best_run is Dictionary else null
+		var best_label := L(("BEST " + U.fmt(best_time)) if best_time != null else "BEST —", "mono", 500, 9 if compact_row else 10, FG)
+		detail_text.add_child(best_label)
+		var watch := tap(PANEL2, accent, 9.0)
+		watch.custom_minimum_size = Vector2(64 if compact_row else 62, 44)
+		watch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		watch.add_child(center(L("WATCH", "body", 700, 9, FG, false, 0.06, true)))
+		watch.pressed.connect(func(): game.replay_track(seed_s, env_s))
+		h.add_child(watch)
+		details.focus_neighbor_right = details.get_path_to(watch)
+		watch.focus_neighbor_left = watch.get_path_to(details)
+		row.add_child(h)
+		recent_track_list.add_child(row)
 
 
 func _populate_fav_previews() -> void:
@@ -2255,6 +2405,24 @@ func set_tab(t: String) -> void:
 	relayout()
 	if t == "tracks":
 		call_deferred("_populate_fav_previews")
+		if menu_on:
+			call_deferred("_focus_tracks_entry")
+
+
+func _focus_tracks_entry() -> void:
+	if not menu_on or game.menu_tab != "tracks":
+		return
+	var target: Control = null
+	if fav_list.get_child_count() > 0:
+		target = fav_list.get_child(0).get_child(0).get_child(1)
+	elif recent_track_list.get_child_count() > 0:
+		target = recent_track_list.get_child(0).get_child(0).get_child(0)
+	else:
+		target = tabs.filter(func(tab): return tab.get_meta("v") == "tracks")[0]
+	if target and target.is_visible_in_tree():
+		target.grab_focus()
+		if tab_scroll.is_ancestor_of(target):
+			tab_scroll.ensure_control_visible(target)
 
 
 func sync_opts() -> void:
@@ -2343,13 +2511,16 @@ func _apply_menu_hidden() -> void:
 
 func show_hud(on: bool) -> void:
 	hud.visible = on
-	pads.visible = on and touch
+	pads.visible = on and touch and not replay_mode
+	hint.visible = on and not touch and not replay_mode
+	meter.visible = on and not replay_mode
+	respawn_btn.visible = not replay_mode
 
 
 func set_touch(on: bool) -> void:
 	touch = on
-	pads.visible = hud.visible and touch
-	hint.visible = not touch
+	pads.visible = hud.visible and touch and not replay_mode
+	hint.visible = hud.visible and not touch and not replay_mode
 	if is_node_ready():
 		refresh_hint()
 		relayout()
@@ -2357,15 +2528,23 @@ func set_touch(on: bool) -> void:
 
 func hud_sync(force: bool) -> void:
 	var g = game
-	meter.set_state(g.car.boost_amt, CarSim.BOOST_CAP, g.car.boost_held)
+	if not replay_mode:
+		meter.set_state(g.car.boost_amt, CarSim.BOOST_CAP, g.car.boost_held)
 	var t: float = 0.0
 	if g.state == "countdown":
 		t = 0.0
 	elif g.state == "finished":
 		t = g.finish_t
+	elif g.state == "replay":
+		t = g.replay_t
 	else:
 		t = g.race_steps * U.STEP
 	var s := U.fmt(t)
+	if replay_mode:
+		var best_time := float(g.best.get("t", 0.0)) if g.best is Dictionary else 0.0
+		replay_lbl.text = ("BEST RUN REPLAY · " if replay_exact else "LEGACY ROUTE PREVIEW · ") + U.fmt(best_time)
+		replay_progress.max_value = maxf(best_time, 0.001)
+		replay_progress.value = minf(t, best_time)
 	if force or _hud_cache.get("t") != s:
 		timer_lbl.text = s
 		_hud_cache["t"] = s

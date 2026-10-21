@@ -11,6 +11,7 @@ const N_WARN_AHEAD := 12
 var opts := {"gfx": "high", "sound": true, "side": "left", "sensV": 75, "stats": ""}
 var car_cfg := {"color": "#e8402c", "finish": "gloss", "boost_color": "#38e8ff"}
 var favs: Array = []
+var recent_tracks: Array = []
 var is_touch := false
 var touch_ui := false
 
@@ -44,11 +45,18 @@ var splits: Array = []
 var net: Net
 var run_info = null
 var ghost_rec: Array = []
+var run_inputs: Array = []
 var snapshot = null
 var cd_t := 0.0
 var cd_last := 0
 var best = null
 var finish_t := 0.0
+var replay_t := 0.0
+var replay_index := 0
+var replay_done := false
+var run_start_boost_t := 0.0
+var run_start_boost_amt := CarSim.BOOST_START
+var run_start_turbo := 0
 var shake := 0.0
 var menu_s := 0.0
 var menu_tab := "drive"
@@ -100,6 +108,7 @@ func _ready() -> void:
 	for k in c:
 		car_cfg[k] = c[k]
 	favs = Store.get_value("favs", [])
+	recent_tracks = Store.get_value("recentTracks", [])
 	_build_scene()
 	net = Net.new()
 	net.name = "Net"
@@ -459,7 +468,7 @@ func release_all_touch() -> void:
 
 
 func haptic(ms: int) -> void:
-	if is_touch:
+	if is_touch and state != "replay":
 		Input.vibrate_handheld(ms)
 
 
@@ -582,7 +591,22 @@ func collide(c: CarSim) -> void:
 
 func physics_step() -> void:
 	var racing := state == "race"
-	var inp: Dictionary = read_input() if racing else {"gas": false, "brake": state == "finished", "drift": false, "steer": 0.0, "analog": false}
+	var replaying := state == "replay"
+	var inp: Dictionary
+	if racing:
+		inp = read_input()
+		run_inputs.append_array([
+			float(inp.get("steer", 0.0)),
+			int(inp.get("gas", false)),
+			int(inp.get("brake", false)),
+			int(inp.get("drift", false)),
+			int(inp.get("boost", false)),
+			int(inp.get("analog", false)),
+		])
+	elif replaying:
+		inp = _read_replay_input()
+	else:
+		inp = {"gas": false, "brake": state == "finished", "drift": false, "steer": 0.0, "analog": false}
 	last_step_input = inp
 	car.px = car.x
 	car.pz = car.z
@@ -590,12 +614,12 @@ func physics_step() -> void:
 	car.step(U.STEP, inp, float(env.get("grip", 1.0)))
 	collide(car)
 	var prev := car.update_progress(track)
-	if racing:
+	if racing or replaying:
 		collect_pads()
 	car.in_water = env.get("shore", false) and not car.on_road and world.terrain_h(car.x, car.z, absf(car.lat)) < -0.4
-	if not racing:
+	if not racing and not replaying:
 		return
-	if race_steps % 6 == 0:
+	if racing and race_steps % 6 == 0:
 		ghost_rec.append(U.jround(car.x * 100.0) / 100.0)
 		ghost_rec.append(U.jround(car.z * 100.0) / 100.0)
 		ghost_rec.append(U.jround(car.h * 1000.0) / 1000.0)
@@ -615,7 +639,8 @@ func physics_step() -> void:
 			var ref = null
 			if best != null and best.has("splits") and si < best.splits.size():
 				ref = best.splits[si]
-			ui.show_split(t - ref if ref != null else null, t)
+			if not replaying:
+				ui.show_split(t - ref if ref != null else null, t)
 			if next_cp < K:
 				world.gates[next_cp].flash = 1.0
 				next_cp += 1
@@ -625,10 +650,33 @@ func physics_step() -> void:
 				next_cp = 0
 				hidden_next = 0
 				if lap > U.LAPS:
-					finish_race(t)
+					if replaying:
+						replay_done = true
+						ui.set_replay_complete()
+					else:
+						finish_race(t)
 					return
 				sfx.chime(false)
-				ui.toast("Lap " + str(lap) + " / " + str(U.LAPS))
+				if not replaying:
+					ui.toast("Lap " + str(lap) + " / " + str(U.LAPS))
+
+
+func _read_replay_input() -> Dictionary:
+	var inputs: Array = best.get("inputs", [])
+	var offset := replay_index * 6
+	if offset + 5 >= inputs.size():
+		replay_done = true
+		return {"gas": false, "brake": false, "drift": false, "boost": false, "steer": 0.0, "analog": false}
+	var input := {
+		"steer": float(inputs[offset]),
+		"gas": bool(inputs[offset + 1]),
+		"brake": bool(inputs[offset + 2]),
+		"drift": bool(inputs[offset + 3]),
+		"boost": bool(inputs[offset + 4]),
+		"analog": bool(inputs[offset + 5]),
+	}
+	replay_index += 1
+	return input
 
 
 func _track_hidden_gates(prev: int) -> void:
@@ -667,12 +715,14 @@ func collect_pads() -> void:
 		car.add_boost(100.0 if p.big else 12.0)
 		p.cd = int((10.0 if p.big else 4.0) / U.STEP)
 		sfx.chime(p.big)
-		haptic(8)
+		if state != "replay":
+			haptic(8)
 
 
 func restart(quick: bool) -> void:
 	if track == null:
 		return
+	ui.set_replay_mode(false)
 	ui.hide_finish()
 	ui.show_pause(false)
 	place_car_at(0, 4)
@@ -686,6 +736,10 @@ func restart(quick: bool) -> void:
 	cut_warn_t = 0.0
 	splits = []
 	ghost_rec = []
+	run_inputs = []
+	run_start_boost_t = 0.0
+	run_start_boost_amt = CarSim.BOOST_START
+	run_start_turbo = 0
 	snapshot = null
 	finish_t = 0.0
 	best = Store.get_value("best5." + track.seed, null)
@@ -705,8 +759,10 @@ func restart(quick: bool) -> void:
 
 func start_race() -> void:
 	sfx.init(opts.sound)
+	_record_recent_track()
 	set_menu(false)
 	ui.show_hud(true)
+	ui.set_replay_mode(false)
 	release_all_touch()
 	DisplayServer.screen_set_keep_on(true)
 	restart(false)
@@ -739,7 +795,7 @@ func respawn() -> void:
 
 
 func toggle_pause() -> void:
-	if state == "race" or state == "countdown":
+	if state == "race" or state == "countdown" or state == "replay":
 		release_all_touch()
 		paused_from = state
 		state = "paused"
@@ -755,6 +811,7 @@ func resume() -> void:
 
 func to_menu() -> void:
 	state = "menu"
+	ui.set_replay_mode(false)
 	release_all_touch()
 	DisplayServer.screen_set_keep_on(false)
 	ui.show_pause(false)
@@ -777,7 +834,10 @@ func finish_race(t: float) -> void:
 	var prev_best = best.t if best != null else null
 	var is_pb: bool = prev_best == null or t < prev_best
 	if is_pb:
-		best = {"t": t, "splits": splits.duplicate(), "ghost": ghost_rec.duplicate()}
+		best = {"t": t, "splits": splits.duplicate(), "ghost": ghost_rec.duplicate(), "inputs": run_inputs.duplicate()}
+		best.start_boost_t = run_start_boost_t
+		best.start_boost_amt = run_start_boost_amt
+		best.start_turbo = run_start_turbo
 		Store.set_value("best5." + track.seed, best)
 		for f in favs:
 			if f.seed == track.seed:
@@ -887,9 +947,67 @@ func remove_fav(seed: String) -> void:
 	ui.relayout()
 
 
+func _record_recent_track() -> void:
+	if track == null:
+		return
+	recent_tracks = recent_tracks.filter(func(entry):
+		return not (entry is Dictionary and entry.get("seed", "") == track.seed and entry.get("env", "") == track.env_key))
+	recent_tracks.push_front({"seed": track.seed, "name": track.name, "env": track.env_key})
+	if recent_tracks.size() > 12:
+		recent_tracks.resize(12)
+	Store.set_value("recentTracks", recent_tracks)
+	ui.render_recent_tracks()
+
+
 func load_fav(seed: String, env_key: String) -> void:
 	with_loading(func(): load_track(seed, env_key))
 	set_tab("drive")
+
+
+func replay_track(seed: String, env_key: String) -> void:
+	await with_loading(func(): _start_track_replay(seed, env_key))
+
+
+func _start_track_replay(seed: String, env_key: String) -> void:
+	load_track(seed, env_key)
+	_record_recent_track()
+	best = Store.get_value("best5." + track.seed, null)
+	var recording = best.get("ghost") if best is Dictionary else null
+	var inputs = best.get("inputs", []) if best is Dictionary else []
+	var has_recorded_inputs: bool = inputs is Array and not inputs.is_empty()
+	var has_route_recording: bool = recording is Array and recording.size() >= 6
+	if not has_recorded_inputs and not has_route_recording:
+		ui.toast("This best time has no replay data. Set a new best to record it.")
+		return
+	replay_t = 0.0
+	replay_index = 0
+	replay_done = false
+	acc = 0.0
+	race_steps = 0
+	ghost_idx = 0
+	place_car_at(0, 4)
+	car.boost_t = float(best.get("start_boost_t", 0.0))
+	car.turbo = int(best.get("start_turbo", 0))
+	car.boost_amt = float(best.get("start_boost_amt", CarSim.BOOST_START))
+	car.in_water = false
+	last_step_input = {"gas": false, "brake": false, "drift": false, "boost": false, "steer": 0.0, "analog": false}
+	for pad in world.pads:
+		pad.cd = 0
+	for gate in world.gates:
+		gate.flash = 0.0
+	fx.clear_skids()
+	lap = 1
+	next_cp = 0
+	hidden_next = 0
+	splits = []
+	ui.hide_finish()
+	ui.show_pause(false)
+	release_all_touch()
+	state = "replay"
+	ui.set_menu(false)
+	ui.show_hud(true)
+	ui.set_replay_mode(true, float(best.get("t", 0.0)), has_recorded_inputs)
+	DisplayServer.screen_set_keep_on(false)
 
 
 func with_loading(fn: Callable) -> void:
@@ -1026,7 +1144,12 @@ func _process(delta: float) -> void:
 				car.boost_t = 1.1
 				car.turbo = 2
 				ui.toast("Perfect start!")
-	if state == "race" or state == "finished":
+			run_start_boost_t = car.boost_t
+			run_start_boost_amt = car.boost_amt
+			run_start_turbo = car.turbo
+	if state == "replay":
+		_advance_replay(dt)
+	elif state == "race" or state == "finished":
 		acc += dt
 		var n2 := 0
 		while acc >= U.STEP and n2 < 20:
@@ -1089,6 +1212,75 @@ func _process(delta: float) -> void:
 		ui.prev_map.queue_redraw()
 	grade_mat.set_shader_parameter("time", sim_t)
 	_perf_tick()
+
+
+func _advance_replay(dt: float) -> void:
+	if best == null:
+		return
+	var inputs = best.get("inputs", [])
+	if inputs is Array and not inputs.is_empty():
+		if replay_done:
+			return
+		acc += dt
+		var steps := 0
+		while acc >= U.STEP and steps < 20 and not replay_done:
+			if replay_index * 6 >= inputs.size():
+				replay_done = true
+				break
+			physics_step()
+			acc -= U.STEP
+			steps += 1
+		replay_t = float(replay_index) * U.STEP
+		if replay_done:
+			ui.set_replay_complete()
+		return
+	if not (best.get("ghost") is Array):
+		return
+	var samples: Array = best.ghost
+	var sample_count := samples.size() / 3
+	if sample_count < 2:
+		return
+	var sample_step := U.STEP * 6.0
+	var duration := float(sample_count - 1) * sample_step
+	replay_t = minf(replay_t + dt, duration)
+	var sample_pos := replay_t / sample_step
+	var sample_idx := mini(int(floor(sample_pos)), sample_count - 2)
+	var blend := sample_pos - float(sample_idx)
+	var a := sample_idx * 3
+	var gx := U.lerpf2(float(samples[a]), float(samples[a + 3]), blend)
+	var gz := U.lerpf2(float(samples[a + 1]), float(samples[a + 4]), blend)
+	var gh := float(samples[a + 2]) + U.ang_diff(float(samples[a + 2]), float(samples[a + 5])) * blend
+	var old_x := car.x
+	var old_z := car.z
+	car.px = car.x
+	car.pz = car.z
+	car.ph = car.h
+	car.x = gx
+	car.z = gz
+	car.h = gh
+	if dt > 0.0:
+		car.vx = (gx - old_x) / dt
+		car.vz = (gz - old_z) / dt
+	car.vf = U.hypot(car.vx, car.vz)
+	car.vl = 0.0
+	car.w = 0.0
+	car.drift = false
+	car.boost_t = 0.0
+	var nearest := ghost_idx
+	var nearest_dist := INF
+	for offset in range(-20, 21):
+		var idx := posmod(ghost_idx + offset, track.n)
+		var d := pow(track.px[idx] - gx, 2.0) + pow(track.pz[idx] - gz, 2.0)
+		if d < nearest_dist:
+			nearest_dist = d
+			nearest = idx
+	ghost_idx = nearest
+	car.idx = nearest
+	car.y = track.py[nearest]
+	car.update_progress(track)
+	race_steps = int(replay_t / U.STEP)
+	if replay_t >= duration:
+		ui.set_replay_complete()
 
 
 var _skidding := false

@@ -58,7 +58,7 @@ func _ready() -> void:
 	_session_id = _uuid()
 	display_name = str(Store.get_value("racer_name", ""))
 	if display_name == "":
-		display_name = "Racer-%04d" % (randi() % 10000)
+		display_name = "seedliner-%04d" % (randi() % 10000)
 		Store.set_value("racer_name", display_name)
 	_token = str(Store.get_value("net_token", ""))
 	_refresh = str(Store.get_value("net_refresh", ""))
@@ -159,7 +159,7 @@ func logout() -> void:
 	Store.set_value("net_email", "")
 	# the old device id is linked to the account that just signed out
 	Store.set_value("net_device", "")
-	display_name = "Racer-%04d" % (randi() % 10000)
+	display_name = "seedliner-%04d" % (randi() % 10000)
 	Store.set_value("racer_name", display_name)
 	await _switch_session()
 	account_changed.emit()
