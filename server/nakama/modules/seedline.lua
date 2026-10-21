@@ -524,7 +524,11 @@ local function rpc_get_car(context, _payload)
   if doc == nil then
     return nk.json_encode({ car = nil, rev = 0 })
   end
-  return nk.json_encode({ car = { color = doc.color, finish = doc.finish }, rev = doc.rev })
+  return nk.json_encode({ car = {
+    color = doc.color,
+    finish = doc.finish,
+    boost_color = doc.boost_color or "#38e8ff",
+  }, rev = doc.rev })
 end
 
 local function rpc_save_car(context, payload)
@@ -536,13 +540,21 @@ local function rpc_save_car(context, payload)
   if type(p.finish) ~= "string" or not CAR_FINISHES[p.finish] then
     fail("invalid car finish", E_INVALID)
   end
+  if p.boost_color ~= nil and (type(p.boost_color) ~= "string" or not p.boost_color:match("^#%x%x%x%x%x%x$")) then
+    fail("invalid booster color", E_INVALID)
+  end
   local rev = now_ms()
   local ok = update_doc("profile", "car", uid, PERM_NONE, function(doc)
     -- never move a revision backwards, even if the server clock does
     if doc ~= nil and doc.rev ~= nil and doc.rev >= rev then
       rev = doc.rev + 1
     end
-    return { color = p.color:lower(), finish = p.finish, rev = rev }
+    return {
+      color = p.color:lower(),
+      finish = p.finish,
+      boost_color = (p.boost_color or (doc and doc.boost_color) or "#38e8ff"):lower(),
+      rev = rev,
+    }
   end)
   if not ok then
     fail("could not save the car", E_INTERNAL)

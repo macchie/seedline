@@ -69,7 +69,7 @@ static func rand_code(length: int = 5) -> String:
 
 
 static func rand_seed_code() -> String:
-	return rand_code(6)
+	return rand_code(16)
 
 
 static func hexc(h: int) -> Color:

@@ -16,6 +16,7 @@ var ex_glow_m: ShaderMaterial = null
 var body_m: ShaderMaterial
 var stripe_m: ShaderMaterial
 var glow_col := Color(0x38 / 255.0, 0xe8 / 255.0, 1.0)
+var boost_col := Color(0x38 / 255.0, 0xe8 / 255.0, 1.0)
 var underglow: MeshInstance3D = null
 var beam: MeshInstance3D = null
 var headlight: SpotLight3D = null
@@ -181,8 +182,9 @@ func add(geo: Geo, mat: Material, x: float, y: float, z: float, p: Node3D = null
 
 
 ## Paint, finish and the matching light-strip colour (applyCarCfg)
-func apply_cfg(color_css: String, finish: String) -> void:
+func apply_cfg(color_css: String, finish: String, boost_css := "#38e8ff") -> void:
 	var c := U.css(color_css)
+	boost_col = U.css(boost_css)
 	body_m.set_shader_parameter("albedo", Mats.v3(c))
 	var f: Array = {"gloss": [0.22, 0.15], "metal": [0.32, 0.55], "matte": [0.85, 0.0]}.get(finish, [0.22, 0.15])
 	body_m.set_shader_parameter("roughness", f[0])

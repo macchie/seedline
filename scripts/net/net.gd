@@ -352,10 +352,14 @@ func _push_car() -> void:
 		return
 	var car: Dictionary = Store.get_value("car", {})
 	if not car.has("color") or not car.has("finish"):
-		car = {"color": "#e8402c", "finish": "gloss"}
+		car = {"color": "#e8402c", "finish": "gloss", "boost_color": "#38e8ff"}
 	var serial := _car_serial
 	_car_busy = true
-	var r: Dictionary = await call_rpc("seedline_save_car", {"color": str(car.color), "finish": str(car.finish)})
+	var r: Dictionary = await call_rpc("seedline_save_car", {
+		"color": str(car.color),
+		"finish": str(car.finish),
+		"boost_color": str(car.get("boost_color", "#38e8ff")),
+	})
 	_car_busy = false
 	if r.ok and r.data is Dictionary:
 		Store.set_value("car_rev", int(r.data.get("rev", 0)))

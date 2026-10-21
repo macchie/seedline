@@ -1,6 +1,6 @@
 class_name Ui
 extends Control
-## All 2D interface (port of the web build's HTML/CSS): menu sheet with Track / Garage / Saved / Options,
+## All 2D interface (port of the web build's HTML/CSS): menu with Drive / Garage / Options,
 ## race HUD with minimap, timer and touch controls, pause and finish cards, toast, loading screen.
 ## Layout units are CSS pixels; the window's content scale maps them to the screen like devicePixelRatio.
 
@@ -16,6 +16,7 @@ const FAST := Color("#4fb2ff")
 const SLOW := Color("#ff5a4f")
 const MEDAL_COL := {"author": Color("#3ddc84"), "gold": Color("#f5c542"), "silver": Color("#c9cfd8"), "bronze": Color("#cf8752")}
 const SWATCHES := ["#e8402c", "#ff8a1f", "#f2c230", "#2ec27e", "#1fb6c9", "#1f6ff1", "#7a4dff", "#f04fb3", "#eef1f5"]
+const BOOST_SWATCHES := ["#38e8ff", "#3fb4ff", "#ff9a3c", "#d25bff", "#2ec27e", "#ff4f78", "#f2c230", "#eef1f5"]
 
 var game                      # Main
 var accent := Color("#ff9a3c")
@@ -40,13 +41,14 @@ var name_lbl: Label
 var prev_map: MapView
 var prev_box: Glass
 var seed_lbl: Label
+var seed_copy_lbl: Label
 var btn_fav: Tap
 var ic_fav: Icon
 var tabs: Array = []
+var tab_list: Control
 var panes := {}
 var tab_scroll: ScrollContainer
 var seed_in: LineEdit
-var medals_box: VBoxContainer
 var lb_box: VBoxContainer
 var lb_group: VBoxContainer
 var lb_panel: Glass
@@ -98,9 +100,17 @@ var net_status_lbl: Label
 var f_rank: Label
 var swatch_box: GridContainer
 var swatches: Array = []
+var boost_swatch_box: GridContainer
+var boost_swatches: Array = []
 var finish_seg: Array = []
 var fav_list: VBoxContainer
 var fav_empty: Label
+var fav_track_cache := {}
+var fav_track_cache_order: Array[String] = []
+var fav_preview_views: Array[Dictionary] = []
+var fav_preview_revision := 0
+var fav_preview_task_running := false
+const FAV_TRACK_CACHE_LIMIT := 32
 var sens_slider: HSlider
 var sens_out: Label
 var opt_segs := {}
@@ -118,6 +128,7 @@ var btn_play: Tap
 var custom_swatch: Tap
 var color_popup: PopupPanel
 var color_picker: ColorPicker
+var picker_target := "paint"
 var menu_on := true
 var menu_tw: Tween
 var pause_resume: Tap
@@ -125,6 +136,8 @@ var finish_retry: Tap
 var _nav_stick := Vector2.ZERO
 var _nav_direction := Vector2i.ZERO
 var _nav_repeat_timer := 0.0
+const NAV_FIRST_DELAY := 0.5
+const NAV_REPEAT_DELAY := 0.24
 
 # hud
 var hud: Control
@@ -167,7 +180,7 @@ var f_time: Label
 var f_medal_dot: Control
 var f_medal: Label
 var f_delta: Label
-var f_medals: VBoxContainer
+var f_best: VBoxContainer
 var f_fav: Label
 var toast_box: Glass
 var toast_lbl: Label
@@ -429,7 +442,7 @@ func _set_stick_direction(direction: Vector2i) -> void:
 	if direction == _nav_direction:
 		return
 	_nav_direction = direction
-	_nav_repeat_timer = 0.35
+	_nav_repeat_timer = NAV_FIRST_DELAY
 	if direction != Vector2i.ZERO:
 		_focus_direction(direction)
 
@@ -607,15 +620,15 @@ func _build_menu() -> void:
 	seed_lbl.clip_text = true
 	seed_lbl.custom_minimum_size = Vector2(1, 0)
 	chiprow.add_child(seed_lbl)
-	var copy := L("Tap to copy", "body", 600, 10, DIM, false, 0.14, true)
-	copy.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	chiprow.add_child(copy)
+	seed_copy_lbl = L("Tap to copy", "body", 600, 10, DIM, false, 0.14, true)
+	seed_copy_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	chiprow.add_child(seed_copy_lbl)
 	chip.add_child(chiprow)
 	chip.pressed.connect(func(): game.copy_seed())
 	seedrow.add_child(chip)
 	trackhead.add_child(seedrow)
 	act_row = hbox(8)
-	var fb := _action_btn("star", "Save track", "Add to Saved tab", "Save this track (with your best time) to the Saved tab so you can come back to it.")
+	var fb := _action_btn("star", "Save track", "Add to Tracks", "Save this track so you can find it later in the Tracks menu.")
 	btn_fav = fb[0]
 	ic_fav = fb[1]
 	fav_title = fb[2]
@@ -635,17 +648,21 @@ func _build_menu() -> void:
 	tbox.pad(4, 4, 4, 4)
 	var trow := hbox(4)
 	tbox.add_child(trow)
-	for t in [["track", "Track"], ["garage", "Garage"], ["saved", "Saved"], ["options", "Options"]]:
+	tab_list = Control.new()
+	tab_list.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tab_list.custom_minimum_size = Vector2(0, 42)
+	tbox.add_child(tab_list)
+	for t in [["drive", "Drive"], ["garage", "Garage"], ["tracks", "Tracks"], ["options", "Options"]]:
 		var b := tap(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 9.0)
-		b.custom_minimum_size = Vector2(0, 34)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var l := L(t[1], "body", 600, 12, DIM, false, 0.06, true)
+		b.custom_minimum_size = Vector2(0, 42)
+		b.focus_mode = Control.FOCUS_ALL
+		var l := L(t[1], "body", 700, 12, DIM, false, 0.12, true)
 		b.add_child(center(l))
 		b.set_meta("v", t[0])
 		b.set_meta("lbl", l)
 		var v: String = t[0]
 		b.pressed.connect(func(): game.set_tab(v))
-		trow.add_child(b)
+		tab_list.add_child(b)
 		tabs.append(b)
 	sheet_box.add_child(tbox)
 	# tab body
@@ -669,7 +686,7 @@ func _build_menu() -> void:
 	tab_scroll.add_child(panes_box)
 	_build_track_pane(panes_box)
 	_build_garage_pane(panes_box)
-	_build_saved_pane(panes_box)
+	_build_tracks_pane(panes_box)
 	_build_options_pane(panes_box)
 	# play
 	btn_play = tap(accent, Color(0, 0, 0, 0), 14.0)
@@ -698,10 +715,11 @@ func _pane(parent: Control, key: String) -> VBoxContainer:
 
 
 func _build_track_pane(parent: Control) -> void:
-	var p := _pane(parent, "track")
+	var p := _pane(parent, "drive")
+	p.add_child(eyebrow("Track code"))
 	var form := hbox(8)
 	seed_in = LineEdit.new()
-	seed_in.placeholder_text = "Paste a seed, e.g. K7Q2XM"
+	seed_in.placeholder_text = "Paste a seed, e.g. A7K2M9Q4B6N8P3RX"
 	seed_in.max_length = 24
 	seed_in.custom_minimum_size = Vector2(0, 42)
 	seed_in.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -739,13 +757,11 @@ func _build_track_pane(parent: Control) -> void:
 	load_b.pressed.connect(func(): game.submit_seed(seed_in.text))
 	form.add_child(load_b)
 	p.add_child(form)
-	medals_box = vbox(2)
-	p.add_child(medals_box)
+	# Keep online rankings available on wide desktop layouts without crowding the Drive panel.
 	var lb_head := hbox(8)
-	var lbe := eyebrow("Leaderboard")
-	lbe.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lb_eyebrow = lbe
-	lb_head.add_child(lbe)
+	lb_eyebrow = eyebrow("Leaderboard")
+	lb_eyebrow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lb_head.add_child(lb_eyebrow)
 	lb_stats = L("", "body", 600, 10, DIM, false, 0.12, true)
 	lb_head.add_child(lb_stats)
 	lb_box = vbox(2)
@@ -781,10 +797,40 @@ func _build_garage_pane(parent: Control) -> void:
 	cu.set_meta("c", "custom")
 	cu.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cu.border_w = 2.0
-	cu.pressed.connect(_open_picker)
+	cu.pressed.connect(func():
+		picker_target = "paint"
+		_open_picker())
 	swatch_box.add_child(cu)
 	custom_swatch = cu
 	swatches.append(cu)
+	p.add_child(eyebrow("Booster color"))
+	boost_swatch_box = GridContainer.new()
+	boost_swatch_box.columns = 4
+	boost_swatch_box.add_theme_constant_override("h_separation", 8)
+	boost_swatch_box.add_theme_constant_override("v_separation", 8)
+	boost_swatch_box.mouse_filter = Control.MOUSE_FILTER_PASS
+	p.add_child(boost_swatch_box)
+	for c in BOOST_SWATCHES:
+		var b := tap(U.css(c), Color(0, 0, 0, 0), 12.0)
+		b.inset_col = Color(0, 0, 0, 0.2)
+		b.inset_h = 6.0
+		b.border_w = 2.0
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.set_meta("c", c)
+		var cc: String = c
+		b.pressed.connect(func(): game.set_boost_color(cc))
+		boost_swatch_box.add_child(b)
+		boost_swatches.append(b)
+	var boost_custom := tap(Color.WHITE, Color(0, 0, 0, 0), 12.0)
+	boost_custom._mat.set_shader_parameter("conic", 1.0)
+	boost_custom.set_meta("c", "custom")
+	boost_custom.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	boost_custom.border_w = 2.0
+	boost_custom.pressed.connect(func():
+		picker_target = "booster"
+		_open_picker())
+	boost_swatch_box.add_child(boost_custom)
+	boost_swatches.append(boost_custom)
 	color_popup = PopupPanel.new()
 	color_picker = ColorPicker.new()
 	color_picker.focus_mode = Control.FOCUS_ALL
@@ -792,7 +838,11 @@ func _build_garage_pane(parent: Control) -> void:
 	color_picker.presets_visible = false
 	color_picker.sampler_visible = false
 	color_picker.color_modes_visible = false
-	color_picker.color_changed.connect(func(c): game.set_car_color("#" + c.to_html(false)))
+	color_picker.color_changed.connect(func(c):
+		if picker_target == "booster":
+			game.set_boost_color("#" + c.to_html(false))
+		else:
+			game.set_car_color("#" + c.to_html(false)))
 	color_popup.add_child(color_picker)
 	add_child(color_popup)
 	p.add_child(eyebrow("Finish"))
@@ -801,9 +851,23 @@ func _build_garage_pane(parent: Control) -> void:
 	p.add_child(s[0])
 
 
+func _build_tracks_pane(parent: Control) -> void:
+	var p := _pane(parent, "tracks")
+	p.add_child(eyebrow("Saved tracks"))
+	fav_list = vbox(6)
+	p.add_child(fav_list)
+	fav_empty = L("No saved tracks yet. Save a track from Drive to keep it here.", "body", 400, 13, DIM)
+	fav_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	fav_empty.custom_minimum_size = Vector2(0, 36)
+	p.add_child(fav_empty)
+
+
 func _open_picker() -> void:
-	color_picker.color = U.css(game.car_cfg.color)
-	var sz := Vector2i(300, 360)
+	color_picker.color = U.css(game.car_cfg.boost_color if picker_target == "booster" else game.car_cfg.color)
+	var sz := Vector2i(
+		mini(300, maxi(200, int(size.x) - 24)),
+		mini(360, maxi(220, int(size.y) - 24))
+	)
 	color_popup.popup_centered(sz)
 	call_deferred("_focus_color_picker")
 
@@ -813,18 +877,9 @@ func _focus_color_picker() -> void:
 		color_picker.grab_focus()
 
 
-func _build_saved_pane(parent: Control) -> void:
-	var p := _pane(parent, "saved")
-	fav_list = vbox(6)
-	p.add_child(fav_list)
-	fav_empty = L("No saved tracks yet. Tap the star next to a seed to keep it here with your best time.", "body", 400, 14, DIM)
-	fav_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	fav_empty.custom_minimum_size = Vector2(0, 0)
-	p.add_child(fav_empty)
-
-
 func _build_options_pane(parent: Control) -> void:
 	var p := _pane(parent, "options")
+	p.add_child(eyebrow("Visuals"))
 	var o1 := vbox(6)
 	var head := hbox(0)
 	head.add_child(eyebrow("Touch steering · "))
@@ -869,6 +924,7 @@ func _build_options_pane(parent: Control) -> void:
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		nm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		nm.clip_text = true
+		nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		nm.custom_minimum_size = Vector2(60, 0)
 		row.add_child(nm)
 		var btns: Array = []
@@ -1160,8 +1216,8 @@ func _build_modals() -> void:
 	f_rank = L("", "body", 600, 12, accent, false, 0.12, true)
 	f_rank.visible = false
 	fbox.add_child(f_rank)
-	f_medals = vbox(2)
-	fbox.add_child(f_medals)
+	f_best = vbox(2)
+	fbox.add_child(f_best)
 	var fg := vbox(8)
 	var b1 := _cbtn("Retry", true, "R")
 	finish_retry = b1[0]
@@ -1503,6 +1559,7 @@ func relayout() -> void:
 	var landscape_short := W > H and H <= 560.0
 	var desktop := W >= 860.0
 	var garage: bool = game.menu_tab == "garage"
+	var desktop_menu := W >= 860.0
 	# brand
 	var wm_size := 34.0
 	if landscape_short:
@@ -1513,6 +1570,7 @@ func relayout() -> void:
 	restyle(wm_b, wm_size)
 	var right_brand := landscape_short
 	brand.alignment = BoxContainer.ALIGNMENT_BEGIN
+	tag.visible = W >= 400.0
 	var top_pad := st + (24.0 if desktop else 14.0)
 	var bsz := brand.get_combined_minimum_size()
 	brand.size = bsz
@@ -1536,8 +1594,8 @@ func relayout() -> void:
 	if landscape_short:
 		name_size = 24.0
 		pm = 60.0
-	var rail := landscape_short or desktop
-	trackhead.visible = not garage or rail
+	trackhead.visible = game.menu_tab == "drive"
+	btn_play.visible = game.menu_tab == "drive"
 	# on phones the track head scrolls with the tab content so the body keeps a usable height
 	var head_scroll := not desktop
 	var head_iw := (W - sl - sr) if not landscape_short else (minf(360.0, 0.46 * W) - 32.0)
@@ -1545,10 +1603,14 @@ func relayout() -> void:
 	prev_box.custom_minimum_size = Vector2(pm, pm)
 	prev_map.custom_minimum_size = Vector2(pm, pm)
 	for c in [fav_cap, rand_cap]:
-		c.visible = not landscape_short
+		c.visible = not landscape_short and W >= 400.0
 	for ab in [btn_fav, btn_rand]:
-		ab.custom_minimum_size.y = 36.0 if landscape_short else 46.0
+		ab.custom_minimum_size.y = 36.0 if landscape_short else (40.0 if W < 400.0 else 46.0)
 	seed_row.get_child(0).custom_minimum_size.y = 36.0 if landscape_short else 42.0
+	var compact_seed := landscape_short or W < 400.0
+	seed_copy_lbl.text = "COPY" if compact_seed else "TAP TO COPY"
+	restyle(seed_lbl, 12.0 if compact_seed else 15.0)
+	restyle(seed_copy_lbl, 9.0 if compact_seed else 10.0)
 	_place_head(head_scroll)
 	if head_scroll:
 		trackhead.custom_minimum_size = Vector2(0, _trackhead_height(head_iw - 6.0))
@@ -1558,7 +1620,7 @@ func relayout() -> void:
 		sheet.pad(18, 18, 18, 18)
 		sheet.radius = Vector4(18, 18, 18, 18)
 		sheet.border_col = LINE
-		var w := 390.0
+		var w := 570.0
 		var top := st + 92.0
 		sheet.position = Vector2(sl, top)
 		sheet.size = Vector2(w, H - top - 24.0)
@@ -1578,11 +1640,28 @@ func relayout() -> void:
 		var h := minf(maxh, content + 24.0 + sb)
 		sheet.position = Vector2(0, H - h)
 		sheet.size = Vector2(W, h)
+	var content_w := sheet.size.x - float(sheet.get_theme_constant("margin_left")) - float(sheet.get_theme_constant("margin_right"))
+	if desktop_menu:
+		content_w -= 128.0
+	else:
+		content_w -= 12.0
+	var bind_label_w := 46.0 if W < 360.0 else (52.0 if W < 400.0 else 60.0)
+	var bind_gap := 4 if W < 360.0 else 6
+	var bind_button_w := clampf((content_w - bind_label_w - float(bind_gap * 3)) / 2.0, 72.0, 112.0)
+	for row in bind_rows.get_children():
+		row.add_theme_constant_override("separation", bind_gap)
+		row.get_child(0).custom_minimum_size.x = bind_label_w
+		for slot in 2:
+			(row.get_child(slot + 1) as Control).custom_minimum_size.x = bind_button_w
+	if desktop_menu:
+		tabs_box.style(Color(1, 1, 1, 0.035), Color(1, 1, 1, 0.06), 14.0)
+	else:
+		tabs_box.style(Color(1, 1, 1, 0.055), Color(0, 0, 0, 0), 12.0)
 	_layout_sheet_inner()
 	sheet._sync()
 	if not menu_on:
 		_apply_menu_hidden()
-	_layout_lb_panel(W, H, st, sr, desktop and W >= 1100.0, desktop and W >= 1100.0 and not garage)
+	_layout_lb_panel(W, H, st, sr, desktop and W >= 1100.0, desktop and W >= 1100.0 and game.menu_tab == "drive")
 	# hud
 	top_l.position = Vector2(sl, st + 12.0)
 	mini_box.size = Vector2(112, 112)
@@ -1638,6 +1717,34 @@ func _layout_sheet_inner() -> void:
 	for c in sheet_box.get_children():
 		if c.visible:
 			blocks.append(c)
+	if size.x >= 860.0:
+		var nav_w := 112.0
+		var gap := 16.0
+		var content_x := nav_w + gap
+		var content_w := maxf(1.0, iw - content_x)
+		tabs_box.pad(8, 8, 8, 8)
+		tabs_box.position = Vector2.ZERO
+		tabs_box.size = Vector2(nav_w, minf(tabs.size() * 48.0 + 16.0, ih))
+		tab_list.size = tabs_box.size - Vector2(16, 16)
+		for i in tabs.size():
+			var b: Tap = tabs[i]
+			b.position = Vector2(0, i * 48.0)
+			b.size = Vector2(tab_list.size.x, 42.0)
+		var main_y := 0.0
+		if trackhead.visible:
+			var hh := _trackhead_height(content_w - 6.0)
+			trackhead.position = Vector2(content_x, main_y)
+			trackhead.size = Vector2(content_w, hh)
+			main_y += hh + 10.0
+		var play_h := btn_play.get_combined_minimum_size().y if btn_play.visible else 0.0
+		var body_h := maxf(0.0, ih - main_y - play_h - (10.0 if play_h > 0.0 else 0.0))
+		tab_scroll.position = Vector2(content_x, main_y)
+		tab_scroll.size = Vector2(content_w, body_h)
+		btn_play.position = Vector2(content_x, main_y + body_h + 10.0)
+		btn_play.size = Vector2(content_w, play_h)
+		for c in [tabs_box, trackhead, tab_scroll, btn_play]:
+			c.visible = c == tabs_box or (c == trackhead and trackhead.visible) or (c == tab_scroll) or (c == btn_play and btn_play.visible)
+		return
 	var heights := {}
 	for c in blocks:
 		if c == tab_scroll:
@@ -1655,6 +1762,16 @@ func _layout_sheet_inner() -> void:
 		c.position = Vector2(0, y)
 		c.size = Vector2(iw, h)
 		y += h + 10.0
+	tabs_box.pad(4, 4, 4, 4)
+	tab_list.size = tabs_box.size - Vector2(8, 8)
+	var nav_gap := 2.0 if size.x < 320.0 else (4.0 if size.x < 360.0 else 8.0)
+	var nav_font := 10.0 if size.x < 320.0 else (11.0 if size.x < 400.0 else 12.0)
+	var item_w := maxf(0.0, (tab_list.size.x - nav_gap * (tabs.size() - 1)) / tabs.size())
+	for i in tabs.size():
+		var b: Tap = tabs[i]
+		b.position = Vector2(i * (item_w + nav_gap), 0)
+		b.size = Vector2(item_w, tab_list.size.y)
+		restyle(b.get_meta("lbl"), nav_font)
 
 
 ## The track head's height with the name wrapped at the width it will get (labels measure lazily)
@@ -1735,7 +1852,7 @@ func _layout_lb_panel(W: float, H: float, st: float, sr: float, wide: bool, show
 		if split:
 			lb_panel_box.add_child(lb_group)
 		else:
-			var tp: VBoxContainer = panes["track"]
+			var tp: VBoxContainer = panes["drive"]
 			tp.add_child(lb_group)
 	lb_eyebrow.visible = not split
 	lb_stats.size_flags_horizontal = Control.SIZE_EXPAND_FILL if split else Control.SIZE_SHRINK_BEGIN
@@ -1881,8 +1998,6 @@ func refresh_menu() -> void:
 	env_lbl.text = (str(e.name) + tod + " · " + ("%.2f" % (t.length / 1000.0)) + " km · " + str(U.LAPS) + " laps · " + str(t.cps.size()) + " CP").to_upper()
 	name_lbl.text = t.name.to_upper()
 	seed_lbl.text = t.seed
-	var b = Store.get_value("best5." + t.seed, null)
-	render_medals(medals_box, b.t if b != null else null)
 	render_leaderboard({"loading": true} if game.net_eligible() else null)
 	game.fetch_leaderboard()
 	sync_icons()
@@ -1917,13 +2032,10 @@ func _medal_row(parent: Control, col: Color, name: String, time: String, pb := f
 		parent.add_child(sep)
 
 
-func render_medals(box: VBoxContainer, pb) -> void:
+func render_personal_best(box: VBoxContainer, pb) -> void:
 	for c in box.get_children():
 		c.queue_free()
 		box.remove_child(c)
-	var m: Dictionary = game.track.medals
-	for md in CarSim.MEDALS:
-		_medal_row(box, MEDAL_COL[md[0]], md[1], U.fmt(m[md[0]]))
 	_medal_row(box, accent, "Personal best", U.fmt(pb) if pb != null else "—", true)
 
 
@@ -2010,23 +2122,34 @@ func set_finish_rank(info) -> void:
 
 
 func render_favs() -> void:
+	fav_preview_revision += 1
 	for c in fav_list.get_children():
 		c.queue_free()
 		fav_list.remove_child(c)
 	var favs: Array = game.favs
+	fav_preview_views.clear()
 	fav_empty.visible = favs.is_empty()
 	for f in favs:
 		var cur: bool = game.track != null and f.seed == game.track.seed
 		var row := tap(PANEL2, accent if cur else Color(0, 0, 0, 0), 12.0)
-		row.custom_minimum_size = Vector2(0, 52)
-		row.pad(12, 6, 6, 6)
+		row.custom_minimum_size = Vector2(0, 76)
+		row.pad(8, 7, 8, 7)
+		var env_key := str(f.get("env", ""))
+		if not Envs.DATA.has(env_key):
+			var parsed = game.parse_seed(str(f.get("seed", "")))
+			if parsed != null:
+				env_key = str(parsed.env)
+		var map_accent := U.css(Envs.DATA[env_key].accent) if Envs.DATA.has(env_key) else accent
 		var h := hbox(10)
-		var ed := Dot.new()
-		ed.rect = true
-		ed.col = U.css(Envs.DATA[f.env].accent) if Envs.DATA.has(f.env) else DIM
-		ed.custom_minimum_size = Vector2(10, 28)
-		ed.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		h.add_child(ed)
+		var preview_box := glass(Color(0, 0, 0, 0.26), LINE, 9.0)
+		preview_box.custom_minimum_size = Vector2(62, 62)
+		preview_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		preview_box.pad(2, 2, 2, 2)
+		var preview := MapView.new()
+		preview.preview = true
+		preview.custom_minimum_size = Vector2(58, 58)
+		preview_box.add_child(preview)
+		h.add_child(preview_box)
 		var nm := vbox(3)
 		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2034,8 +2157,13 @@ func render_favs() -> void:
 		var nb := L(str(f.name), "display", 800, 17, FG, true, 0.0, true)
 		nb.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		nb.clip_text = true
+		nb.custom_minimum_size = Vector2(1, 0)
 		nm.add_child(nb)
-		nm.add_child(L(str(f.seed), "mono", 500, 11, DIM))
+		var seed_label := L(str(f.seed), "mono", 500, 11, DIM)
+		seed_label.clip_text = true
+		seed_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		seed_label.custom_minimum_size = Vector2(1, 0)
+		nm.add_child(seed_label)
 		h.add_child(nm)
 		var b = Store.get_value("best5." + str(f.seed), null)
 		var bt = b.t if b != null else null
@@ -2056,12 +2184,58 @@ func render_favs() -> void:
 		xi.color = DIM
 		x.add_child(center(xi))
 		var seed_s: String = f.seed
-		var env_s: String = f.env
+		var env_s := env_key
 		x.pressed.connect(func(): game.remove_fav(seed_s))
 		h.add_child(x)
 		row.add_child(h)
 		row.pressed.connect(func(): game.load_fav(seed_s, env_s))
 		fav_list.add_child(row)
+		fav_preview_views.append({
+			"map": preview,
+			"seed": seed_s,
+			"env": env_s,
+			"accent": map_accent,
+		})
+	if game.menu_tab == "tracks":
+		call_deferred("_populate_fav_previews")
+
+
+func _populate_fav_previews() -> void:
+	if fav_preview_task_running or game.menu_tab != "tracks":
+		return
+	fav_preview_task_running = true
+	var revision := fav_preview_revision
+	for entry in fav_preview_views:
+		if revision != fav_preview_revision or game.menu_tab != "tracks":
+			break
+		var preview := entry.map as MapView
+		if not is_instance_valid(preview) or preview.t != null:
+			continue
+		var track := _cached_fav_track(str(entry.seed), str(entry.env))
+		preview.set_track(track, entry.accent)
+		await get_tree().process_frame
+	fav_preview_task_running = false
+	if game.menu_tab == "tracks" and revision != fav_preview_revision:
+		call_deferred("_populate_fav_previews")
+
+
+func _cached_fav_track(seed: String, env_key: String) -> TrackData:
+	var key := env_key + "|" + seed
+	if fav_track_cache.has(key):
+		fav_track_cache_order.erase(key)
+		fav_track_cache_order.append(key)
+		return fav_track_cache[key]
+	var track: TrackData
+	if game.track != null and game.track.seed == seed and game.track.env_key == env_key:
+		track = game.track
+	else:
+		track = TrackGen.generate(seed, env_key)
+	fav_track_cache[key] = track
+	fav_track_cache_order.append(key)
+	if fav_track_cache_order.size() > FAV_TRACK_CACHE_LIMIT:
+		var expired: String = fav_track_cache_order.pop_front()
+		fav_track_cache.erase(expired)
+	return track
 
 
 func set_tab(t: String) -> void:
@@ -2072,7 +2246,11 @@ func set_tab(t: String) -> void:
 	for k in panes:
 		panes[k].visible = k == t
 	tab_scroll.scroll_vertical = 0
+	if btn_play:
+		btn_play.visible = t == "drive"
 	relayout()
+	if t == "tracks":
+		call_deferred("_populate_fav_previews")
 
 
 func sync_opts() -> void:
@@ -2095,6 +2273,12 @@ func sync_car() -> void:
 		var on := (key == c) or (key == "custom" and custom)
 		b.set_border_state(FG if on else Color(1, 1, 1, 0.12), 2.0 if on else 1.0)
 	set_seg(finish_seg, game.car_cfg.finish)
+	var boost_color: String = game.car_cfg.boost_color
+	var custom_boost := not BOOST_SWATCHES.has(boost_color)
+	for b in boost_swatches:
+		var key: String = b.get_meta("c")
+		var on := (key == boost_color) or (key == "custom" and custom_boost)
+		b.set_border_state(FG if on else Color(1, 1, 1, 0.12), 2.0 if on else 1.0)
 
 
 func _input(ev: InputEvent) -> void:
@@ -2108,10 +2292,10 @@ func _process(_dt: float) -> void:
 		_nav_repeat_timer -= _dt
 		if _nav_repeat_timer <= 0.0:
 			_focus_direction(_nav_direction)
-			_nav_repeat_timer = 0.12
+			_nav_repeat_timer = NAV_REPEAT_DELAY
 	# keep swatches square (aspect-ratio: 1)
 	if swatch_box and swatch_box.is_visible_in_tree():
-		for b in swatches:
+		for b in swatches + boost_swatches:
 			if absf(b.custom_minimum_size.y - b.size.x) > 0.5:
 				b.custom_minimum_size.y = b.size.x
 
@@ -2417,7 +2601,7 @@ func show_finish(track_txt: String, t: float, medal, delta_txt: String, delta_co
 		f_medal.text = "NO MEDAL"
 	f_delta.text = delta_txt
 	f_delta.add_theme_color_override("font_color", delta_col)
-	render_medals(f_medals, pb)
+	render_personal_best(f_best, pb)
 	sync_icons()
 	finish_modal.visible = true
 	_rise(finish_modal.get_child(0))

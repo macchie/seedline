@@ -9,7 +9,7 @@ const N_WARN_AHEAD := 12
 
 # --- persistent options (same keys and defaults as localStorage in the web build)
 var opts := {"gfx": "high", "sound": true, "side": "left", "sensV": 75, "stats": ""}
-var car_cfg := {"color": "#e8402c", "finish": "gloss"}
+var car_cfg := {"color": "#e8402c", "finish": "gloss", "boost_color": "#38e8ff"}
 var favs: Array = []
 var is_touch := false
 var touch_ui := false
@@ -51,7 +51,7 @@ var best = null
 var finish_t := 0.0
 var shake := 0.0
 var menu_s := 0.0
-var menu_tab := "track"
+var menu_tab := "drive"
 var last_step_input := {"gas": false, "brake": false, "drift": false, "steer": 0.0, "analog": false}
 var cd := {"gas": false, "blown": false, "boost": false}
 var paused_from := "race"
@@ -178,7 +178,7 @@ func _build_scene() -> void:
 	ghost_v = CarModel.new(true)
 	ghost_v.visible = false
 	add_child(ghost_v)
-	car_v.apply_cfg(car_cfg.color, car_cfg.finish)
+	car_v.apply_cfg(car_cfg.color, car_cfg.finish, car_cfg.boost_color)
 	fx = Fx.new()
 	add_child(fx)
 	sfx = Sfx.new()
@@ -889,7 +889,7 @@ func remove_fav(seed: String) -> void:
 
 func load_fav(seed: String, env_key: String) -> void:
 	with_loading(func(): load_track(seed, env_key))
-	set_tab("track")
+	set_tab("drive")
 
 
 func with_loading(fn: Callable) -> void:
@@ -958,6 +958,11 @@ func set_car_color(c: String) -> void:
 	save_car()
 
 
+func set_boost_color(c: String) -> void:
+	car_cfg.boost_color = c
+	save_car()
+
+
 func set_finish(f: String) -> void:
 	car_cfg.finish = f
 	save_car()
@@ -975,6 +980,7 @@ func _on_car_pulled(remote: Dictionary) -> void:
 		return
 	car_cfg.color = color
 	car_cfg.finish = finish
+	car_cfg.boost_color = str(remote.get("boost_color", car_cfg.boost_color))
 	save_car(false)
 
 
@@ -982,7 +988,7 @@ func save_car(push := true) -> void:
 	Store.set_value("car", car_cfg)
 	if push and net != null:
 		net.queue_car()
-	car_v.apply_cfg(car_cfg.color, car_cfg.finish)
+	car_v.apply_cfg(car_cfg.color, car_cfg.finish, car_cfg.boost_color)
 	ui.mini.car_col = U.css(car_cfg.color)
 	ui.prev_map.car_col = U.css(car_cfg.color)
 	ui.sync_car()
@@ -1107,7 +1113,7 @@ func _update_car_visuals(dt: float, x: float, z: float, h: float, speed: float) 
 	var lin := last_step_input
 	body.rotation.x = U.lerpf2(body.rotation.x, (0.035 if (lin.brake and not car.drift and car.vf > 2.0) else 0.0) - (0.025 if (lin.gas and speed < 40.0) else 0.0) - (0.03 if car.is_boosting() else 0.0), 0.12)
 	var k := 1.0 if car.is_boosting() else (0.75 if (lin.gas and state != "menu") else 0.35)
-	var ec := (U.hexc(0xffb35a) if car.is_boosting() else car_v.glow_col) * k
+	var ec := (car_v.boost_col if car.is_boosting() else car_v.glow_col) * k
 	ec.a = 1.0
 	car_v.exhaust_m.set_shader_parameter("color", Mats.v3(ec))
 	if car_v.ex_glow:
@@ -1194,14 +1200,14 @@ func _update_effects(dt: float, x: float, z: float, h: float, speed: float) -> v
 		for j in 8:
 			var s2 := 1.0 if j % 2 == 1 else -1.0
 			pts.append(Vector3(x + rxx * s2 * 1.15 - fxx * 1.7 + (randf() - 0.5) * 0.8, 0.3 + randf() * 0.6 + car.y, z + rzz * s2 * 1.15 - fzz * 1.7 + (randf() - 0.5) * 0.8))
-		fx.show_sparks(pts, U.hexc(TURBO_COL[car.level]), 1.2 + randf() * 1.3 + car.level * 0.35)
+		fx.show_sparks(pts, car_v.boost_col, 1.2 + randf() * 1.3 + car.level * 0.35)
 	elif moving and car.is_boosting():
 		var pts2: Array = []
 		for j in 8:
 			var s3 := 0.45 if j % 2 == 1 else -0.45
 			var b := 2.4 + randf() * 1.6
 			pts2.append(Vector3(x + rxx * s3 - fxx * b, 0.6 + randf() * 0.3 + car.y, z + rzz * s3 - fzz * b))
-		fx.show_sparks(pts2, U.hexc(0xff8a2a), 1.8 + randf() * 1.6)
+		fx.show_sparks(pts2, car_v.boost_col, 1.8 + randf() * 1.6)
 	else:
 		fx.hide_sparks()
 	if car.level_up != 0:
@@ -1210,7 +1216,7 @@ func _update_effects(dt: float, x: float, z: float, h: float, speed: float) -> v
 	if car.turbo != 0:
 		sfx.whoosh()
 		haptic(18)
-		ui.boost_fx(U.hexc(TURBO_COL[car.turbo]))
+		ui.boost_fx(car_v.boost_col)
 		car.turbo = 0
 	if car.is_boosting() and moving and randf() < 0.5:
 		fx.puff(x - fxx * 2.6, 0.6 + car.y, z - fzz * 2.6, -car.vx * 0.3, -car.vz * 0.3, 1.1, 0.45)
