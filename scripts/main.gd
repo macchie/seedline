@@ -46,6 +46,7 @@ var cut_warn_t := 0.0
 var splits: Array = []
 var net: Net
 var run_info = null
+var last_pp = null
 var ghost_rec: Array = []
 var server_ghost_rec: Array = []
 var server_ghost_complete := true
@@ -121,6 +122,8 @@ func _ready() -> void:
 	net.status_changed.connect(_on_net_status)
 	net.track_info_ready.connect(_on_track_info)
 	net.run_submitted.connect(_on_run_submitted)
+	net.pp_updated.connect(_on_pp_updated)
+	net.pp_ready.connect(func(d): ui.render_pp(d))
 	net.account_changed.connect(_on_account_changed)
 	net.car_pulled.connect(_on_car_pulled)
 	net.events_ready.connect(func(d): ui.render_events(d))
@@ -903,6 +906,7 @@ func _on_net_status(s: String) -> void:
 	if s == "online":
 		fetch_leaderboard()
 		fetch_events()
+		net.fetch_pp()
 
 
 func _on_track_info(seed: String, env: String, info: Dictionary) -> void:
@@ -920,6 +924,14 @@ func _on_run_submitted(seed: String, env: String, info: Dictionary) -> void:
 	ui.render_leaderboard(info)
 	if ui.finish_modal.visible:
 		ui.set_finish_rank(info)
+
+
+## A submitted run's PP result (track PP gained + new global total); update the HUD and finish card.
+func _on_pp_updated(pp: Dictionary) -> void:
+	last_pp = pp
+	ui.set_global_pp(net.global_pp)
+	if ui.finish_modal.visible:
+		ui.set_finish_pp(pp)
 
 
 # ================================================================== menu actions (bound from the UI)

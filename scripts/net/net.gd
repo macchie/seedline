@@ -7,6 +7,8 @@ signal status_changed(text: String)
 signal online_changed(count: int)
 signal track_info_ready(seed: String, env: String, info: Dictionary)
 signal run_submitted(seed: String, env: String, info: Dictionary)
+signal pp_updated(pp: Dictionary)
+signal pp_ready(data: Dictionary)
 signal account_changed
 signal car_pulled(car: Dictionary)
 signal events_ready(data: Dictionary)
@@ -31,6 +33,8 @@ var status := "offline"
 var online := 0
 var display_name := ""
 var email := ""
+var global_pp := 0.0
+var pp_rank := 0
 
 var _token := ""
 var _refresh := ""
@@ -223,6 +227,23 @@ func fetch_events() -> void:
 		events_ready.emit({"error": true})
 
 
+## The caller's global Performance Points: total, world rank, top tracks and the global top players.
+func fetch_pp() -> void:
+	if not is_online():
+		return
+	var r: Dictionary = await call_rpc("seedline_pp", {})
+	if r.ok and r.data is Dictionary:
+		global_pp = float(r.data.get("global_pp", global_pp))
+		pp_rank = int(r.data.get("rank", pp_rank))
+		pp_ready.emit(r.data)
+
+
+## Fold a submit_run PP result into the cached global rating and notify listeners.
+func _apply_pp(pp: Dictionary) -> void:
+	global_pp = float(pp.get("global_pp", global_pp))
+	pp_updated.emit(pp)
+
+
 func submit_run(seed: String, env: String, time_s: float, length_m: float, splits: Array, laps: int, ghost: Array = []) -> void:
 	if not eligible(seed):
 		return
@@ -262,6 +283,8 @@ func flush_queue() -> void:
 		if r.ok:
 			q.pop_front()
 			Store.set_value(QUEUE_KEY, q)
+			if r.data is Dictionary and r.data.get("pp") is Dictionary:
+				_apply_pp(r.data.pp)
 			if r.data is Dictionary and r.data.get("info") is Dictionary:
 				run_submitted.emit(entry.seed, entry.env, r.data.info)
 			continue

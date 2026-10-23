@@ -44,6 +44,23 @@ local CFG = {
   occ_retries = 10,
 }
 
+-- Performance Points: a global skill rating in the osu!/Trackmania style, built for repeatable
+-- 3-lap time attacks. Per track we judge a run against the shrunk log-normal distribution of every
+-- player's best time, convert the Z-score to track PP, then aggregate a player's best tracks with a
+-- geometric 0.95 decay. All of it is forge-proof: the client never sends PP, only its (validated) time.
+local PP = {
+  base = 100.0,        -- PP for an average (Z = 0) clean run
+  z_min = -2.0,        -- clamp so a broken, unpopulated seed cannot grant infinite points
+  z_max = 4.0,         -- a god-tier ~ +4 sigma world record tops out near 300 PP
+  syn_weight = 5.0,    -- W: the synthetic "par anchor" counts as this many virtual players (a Bayesian prior)
+  syn_speed = 50.0,    -- m/s reference average speed for the synthetic par time (calibrate with real data)
+  syn_sigma = 0.15,    -- synthetic spread of ln(time); dominates sigma until real players arrive
+  conf_k = 3.0,        -- C_confidence = N / (N + conf_k): caps PP until a few players challenge a seed
+  decay = 0.95,        -- geometric weight of the i-th best track in the global total (series converges to x20)
+  keep = 200,          -- most-valuable tracks retained per player for the global total
+  score_scale = 100.0, -- the global_pp leaderboard stores round(global_pp * 100) as an integer score
+}
+
 local SYSTEM = "00000000-0000-0000-0000-000000000000"
 local PERM_NONE, PERM_PUBLIC = 0, 2
 
@@ -329,7 +346,8 @@ end
 
 -- ----------------------------------------------------------------------------- tracks
 
-local function track_stats(lb_id)
+-- Raw track_stats doc with the fields PP needs (log-time sums, length). Internal; not sent to clients.
+local function track_stats_doc(lb_id)
   local doc = read_doc("track_stats", lb_id, SYSTEM) or {}
   return {
     runs = doc.runs or 0,
@@ -338,11 +356,90 @@ local function track_stats(lb_id)
     total_ms = doc.total_ms or 0,
     first_at = doc.first_at,
     last_at = doc.last_at,
+    length_m = doc.length_m,
+    sum_logt = doc.sum_logt,
+    sum_logt2 = doc.sum_logt2,
   }
 end
 
+-- The client-facing subset (no internal log sums).
+local function track_stats(lb_id)
+  local doc = track_stats_doc(lb_id)
+  return {
+    runs = doc.runs,
+    players = doc.players,
+    best_ms = doc.best_ms,
+    total_ms = doc.total_ms,
+    first_at = doc.first_at,
+    last_at = doc.last_at,
+  }
+end
+
+-- ----------------------------------------------------------------------------- performance points
+
+-- Synthetic par anchor: a forge-proof prior time (ms) derived from the validated track length.
+local function pp_par_ms(length_m)
+  local total_m = CFG.laps * (length_m or CFG.min_length_m)
+  return (total_m / PP.syn_speed) * 1000.0
+end
+
+-- Bayesian-shrunk mean and standard deviation of ln(best time) for a track's player population.
+-- Blends the N real players with W synthetic "par" players so a 1-2 player seed is judged mostly
+-- against the generator's physics, and the real distribution dominates once ~20 humans have raced.
+local function pp_effective(stats)
+  local n = stats.players or 0
+  local mu_syn = math.log(pp_par_ms(stats.length_m))
+  local mu_players, var_players = mu_syn, 0.0
+  if n >= 1 and stats.sum_logt ~= nil then
+    mu_players = stats.sum_logt / n
+    var_players = (stats.sum_logt2 or 0) / n - mu_players * mu_players
+    if var_players < 0 then var_players = 0 end
+  end
+  local sigma_players = math.sqrt(var_players)
+  local w = PP.syn_weight
+  local mu_eff = (n * mu_players + w * mu_syn) / (n + w)
+  local sigma_eff = (n * sigma_players + w * PP.syn_sigma) / (n + w)
+  if sigma_eff < 1e-6 then
+    sigma_eff = PP.syn_sigma
+  end
+  return mu_eff, sigma_eff, n
+end
+
+-- Raw track PP for a finish time (ms) against the track's current shrunk distribution.
+-- Returns pp, the clamped z-score and the player count used.
+local function pp_for_time(stats, time_ms)
+  local n = stats.players or 0
+  if not is_number(time_ms) or time_ms <= 0 then
+    return 0.0, 0.0, n
+  end
+  local mu_eff, sigma_eff = pp_effective(stats)
+  local z = (mu_eff - math.log(time_ms)) / sigma_eff
+  if z < PP.z_min then
+    z = PP.z_min
+  elseif z > PP.z_max then
+    z = PP.z_max
+  end
+  local conf = n / (n + PP.conf_k)
+  local pp = PP.base * (1.0 + 0.5 * z) * conf
+  if pp < 0 then
+    pp = 0.0
+  end
+  return pp, z, n
+end
+
+local function round(x)
+  return math.floor(x + 0.5)
+end
+
 local function track_info(lb_id, uid)
-  local result = { stats = track_stats(lb_id), top = {}, me = nil, ghosts = {} }
+  local sdoc = track_stats_doc(lb_id)
+  local result = {
+    stats = {
+      runs = sdoc.runs, players = sdoc.players, best_ms = sdoc.best_ms,
+      total_ms = sdoc.total_ms, first_at = sdoc.first_at, last_at = sdoc.last_at,
+    },
+    top = {}, me = nil, ghosts = {},
+  }
   local ok, records, owner_records = pcall(nk.leaderboard_records_list, lb_id, { uid }, CFG.ghost_scan_limit)
   if not ok then
     return result
@@ -426,6 +523,20 @@ local function track_info(lb_id, uid)
         end
       end
     end
+  end
+
+  -- PP preview for the current track: what the fastest run is worth now, what the caller's best is
+  -- worth, the forge-proof par anchor and the theoretical ceiling of a +z_max world record.
+  result.pp = {
+    players = sdoc.players,
+    par_ms = round(pp_par_ms(sdoc.length_m)),
+    max_pp = PP.base * (1.0 + 0.5 * PP.z_max),
+  }
+  if result.top[1] ~= nil then
+    result.pp.top_pp = pp_for_time(sdoc, result.top[1].time_ms)
+  end
+  if result.me ~= nil and result.me.time_ms ~= nil then
+    result.pp.me_pp = pp_for_time(sdoc, result.me.time_ms)
   end
   return result
 end
@@ -565,6 +676,14 @@ local function ensure_event_boards()
   end
 end
 
+-- One authoritative, descending board for the global PP rating (score = round(PP * 100)).
+local function ensure_global_board()
+  local ok, err = pcall(nk.leaderboard_create, "global_pp", true, "desc", "set", nil, { kind = "global_pp" })
+  if not ok and not (type(err) == "string" and err:find("exist", 1, true)) then
+    nk.logger_warn("global_pp board: " .. tostring(err))
+  end
+end
+
 --- When an event period rolls over, tell the top finishers how they placed.
 local function on_event_reset(_context, leaderboard, _reset)
   local id = leaderboard ~= nil and leaderboard.id or nil
@@ -592,27 +711,46 @@ end
 
 local function record_track_play(run, uid)
   -- the first write of a (user, track) marker is what makes a unique player
-  local _, _, new_player = update_doc("track_played", run.lb_id, uid, PERM_NONE, function(doc)
+  local _, _, mark = update_doc("track_played", run.lb_id, uid, PERM_NONE, function(doc)
     local now = now_s()
     if doc == nil then
-      return { first_at = now, last_at = now, runs = 1, best_ms = run.time_ms }, true
+      return { first_at = now, last_at = now, runs = 1, best_ms = run.time_ms },
+        { new_player = true, old_best = nil, improved = true, best_ms = run.time_ms }
     end
+    local prev = doc.best_ms
     doc.runs = (doc.runs or 0) + 1
     doc.last_at = now
-    if run.time_ms < (doc.best_ms or math.huge) then
+    local improved = run.time_ms < (prev or math.huge)
+    if improved then
       doc.best_ms = run.time_ms
     end
-    return doc, false
+    return doc, { new_player = false, old_best = prev, improved = improved, best_ms = doc.best_ms }
   end)
+  mark = mark or { new_player = false, old_best = nil, improved = false, best_ms = run.time_ms }
 
-  local _, _, new_track = update_doc("track_stats", run.lb_id, SYSTEM, PERM_PUBLIC, function(doc)
+  -- Track_stats keeps the running log-time sums over players' *best* times so PP can compute the
+  -- shrunk mean/sigma without scanning the whole leaderboard. When a player sets a new best we swap
+  -- their old ln(T) contribution for the new one; a slower run never changes the distribution.
+  local _, stats_doc, new_track = update_doc("track_stats", run.lb_id, SYSTEM, PERM_PUBLIC, function(doc)
     local now = now_s()
     local created = doc == nil
-    doc = doc or { runs = 0, players = 0, total_ms = 0, first_at = now, seed = run.seed, env = run.env, length_m = run.length_m }
+    doc = doc or { runs = 0, players = 0, total_ms = 0, first_at = now, seed = run.seed, env = run.env,
+      length_m = run.length_m, sum_logt = 0.0, sum_logt2 = 0.0 }
+    doc.sum_logt = doc.sum_logt or 0.0
+    doc.sum_logt2 = doc.sum_logt2 or 0.0
+    doc.length_m = doc.length_m or run.length_m
     doc.runs = doc.runs + 1
     doc.total_ms = doc.total_ms + run.time_ms
-    if new_player then
+    if mark.new_player then
       doc.players = doc.players + 1
+      local l = math.log(run.time_ms)
+      doc.sum_logt = doc.sum_logt + l
+      doc.sum_logt2 = doc.sum_logt2 + l * l
+    elseif mark.improved and mark.old_best ~= nil then
+      local lo = math.log(mark.old_best)
+      local ln = math.log(run.time_ms)
+      doc.sum_logt = doc.sum_logt - lo + ln
+      doc.sum_logt2 = doc.sum_logt2 - lo * lo + ln * ln
     end
     if doc.best_ms == nil or run.time_ms < doc.best_ms then
       doc.best_ms = run.time_ms
@@ -621,7 +759,42 @@ local function record_track_play(run, uid)
     doc.last_at = now
     return doc, created
   end)
-  return new_player, new_track
+  return mark, new_track, stats_doc
+end
+
+-- Recompute a player's global PP from their per-track bests and push it to the global_pp board.
+-- track PP for the tracks they aren't actively racing can drift as others join; it refreshes the
+-- next time they set a time there. The just-scored track is always recomputed against fresh stats.
+local function update_player_pp(uid, run, stats_doc)
+  local track_pp, z, n = pp_for_time(stats_doc, run.time_ms)
+  local global = 0.0
+  update_doc("profile", "pp", uid, PERM_NONE, function(doc)
+    doc = doc or { tracks = {}, global = 0.0 }
+    doc.tracks = doc.tracks or {}
+    doc.tracks[run.lb_id] = { pp = track_pp, t = run.time_ms, seed = run.seed, env = run.env }
+    local arr = {}
+    for id, e in pairs(doc.tracks) do
+      arr[#arr + 1] = { id = id, pp = e.pp or 0.0 }
+    end
+    table.sort(arr, function(a, b) return a.pp > b.pp end)
+    local g, factor = 0.0, 1.0
+    for _, e in ipairs(arr) do
+      g = g + e.pp * factor
+      factor = factor * PP.decay
+    end
+    if #arr > PP.keep then
+      local kept = {}
+      for i = 1, PP.keep do
+        kept[arr[i].id] = doc.tracks[arr[i].id]
+      end
+      doc.tracks = kept
+    end
+    doc.global = g
+    global = g
+    return doc
+  end)
+  pcall(nk.leaderboard_record_write, "global_pp", uid, "", round(global * PP.score_scale), 0, { pp = global })
+  return { track_pp = track_pp, global_pp = global, z = z, players = n, improved = true }
 end
 
 -- ----------------------------------------------------------------------------- RPCs
@@ -689,6 +862,7 @@ local function rpc_submit_run(context, payload)
     return nk.json_encode({ accepted = true, duplicate = true, info = track_info(run.lb_id, uid) })
   end
 
+  local pp_result = nil
   local ok, err = pcall(function()
     ensure_leaderboard(run.lb_id, run.seed, run.env)
     local names = display_names({ uid })
@@ -712,12 +886,25 @@ local function rpc_submit_run(context, payload)
         nk.logger_warn("track ghost save failed: " .. tostring(ghost_err))
       end
     end
-    local _, new_track = record_track_play(run, uid)
+    local mark, new_track, stats_doc = record_track_play(run, uid)
     counter_add("runs_total", 1)
     if new_track then
       counter_add("tracks_total", 1)
     end
     count_profile(info)
+    -- A run only changes a player's PP when it is a new personal best; a slower run is informational.
+    if mark.improved then
+      local pp_ok, res = pcall(update_player_pp, uid, run, stats_doc)
+      if pp_ok then
+        pp_result = res
+      else
+        nk.logger_warn("pp update failed: " .. tostring(res))
+      end
+    else
+      local best_pp, z, n = pp_for_time(stats_doc, mark.best_ms or run.time_ms)
+      local pdoc = read_doc("profile", "pp", uid)
+      pp_result = { track_pp = best_pp, global_pp = (pdoc and pdoc.global) or 0.0, z = z, players = n, improved = false }
+    end
   end)
   if not ok then
     -- undo the idempotency marker so the client's retry is processed again
@@ -729,7 +916,7 @@ local function rpc_submit_run(context, payload)
     fail("could not record the run", E_INTERNAL)
   end
 
-  return nk.json_encode({ accepted = true, duplicate = false, info = track_info(run.lb_id, uid) })
+  return nk.json_encode({ accepted = true, duplicate = false, pp = pp_result, info = track_info(run.lb_id, uid) })
 end
 
 local function rpc_track_info(context, payload)
@@ -757,6 +944,43 @@ local function rpc_overview(context, _payload)
     sessions_total = counter_total("sessions_total"),
     tracks_total = counter_total("tracks_total"),
     active_today = counter_total("dau:" .. today()),
+  })
+end
+
+--- The caller's global Performance Points: total, world rank, their most valuable tracks and the
+--- current global top. Scores on the global_pp board are stored as round(PP * 100).
+local function rpc_pp(context, _payload)
+  local uid = require_user(context)
+  local doc = read_doc("profile", "pp", uid) or { tracks = {}, global = 0.0 }
+  local arr = {}
+  for _, e in pairs(doc.tracks or {}) do
+    arr[#arr + 1] = { seed = e.seed, env = e.env, pp = e.pp or 0.0, time_ms = e.t }
+  end
+  table.sort(arr, function(a, b) return a.pp > b.pp end)
+  local top = {}
+  for i = 1, math.min(#arr, 25) do
+    top[i] = arr[i]
+  end
+  local rank = 0
+  local ok_h, hay = pcall(nk.leaderboard_records_haystack, "global_pp", uid, 1)
+  if ok_h and hay ~= nil then
+    for _, h in ipairs(hay) do
+      if h.owner_id == uid then
+        rank = h.rank or 0
+      end
+    end
+  end
+  local standings = board_standings("global_pp", uid, CFG.top_limit)
+  local players = {}
+  for _, t in ipairs(standings.top) do
+    players[#players + 1] = { rank = t.rank, name = t.name, global_pp = (t.time_ms or 0) / PP.score_scale }
+  end
+  return nk.json_encode({
+    global_pp = doc.global or 0.0,
+    rank = rank,
+    tracks_scored = #arr,
+    top = top,
+    top_players = players,
   })
 end
 
@@ -808,6 +1032,7 @@ local function rpc_save_car(context, payload)
 end
 
 ensure_event_boards()
+ensure_global_board()
 pcall(nk.register_leaderboard_reset, on_event_reset)
 
 nk.register_rpc(rpc_hello, "seedline_hello")
@@ -817,5 +1042,6 @@ nk.register_rpc(rpc_overview, "seedline_overview")
 nk.register_rpc(rpc_get_car, "seedline_get_car")
 nk.register_rpc(rpc_save_car, "seedline_save_car")
 nk.register_rpc(rpc_events, "seedline_events")
+nk.register_rpc(rpc_pp, "seedline_pp")
 
 nk.logger_info("Seedline module loaded")

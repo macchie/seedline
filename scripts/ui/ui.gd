@@ -137,6 +137,9 @@ var acct_opt_btn: Tap
 var acct_opt_lbl: Label
 var net_status_lbl: Label
 var f_rank: Label
+var f_pp: Label
+var pp_stat: Label           # global PP shown on the account screen
+var _global_pp := 0.0
 var swatch_box: GridContainer
 var swatches: Array = []
 var boost_swatch_box: GridContainer
@@ -1805,6 +1808,9 @@ func _build_modals() -> void:
 	f_rank = L("", "body", 600, 12, accent, false, 0.12, true)
 	f_rank.visible = false
 	fbox.add_child(f_rank)
+	f_pp = L("", "mono", 700, 13, FG, false, 0.02)
+	f_pp.visible = false
+	fbox.add_child(f_pp)
 	f_best = vbox(2)
 	fbox.add_child(f_best)
 	var fg := vbox(8)
@@ -1870,6 +1876,22 @@ func _build_account_modal() -> void:
 	acct_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	acct_sub.custom_minimum_size = Vector2(120, 0)
 	acct_box.add_child(acct_sub)
+	# global performance-points rating (always visible — it follows the device account)
+	var pp_card := glass(Color(accent, 0.1), Color(accent, 0.35), 14.0)
+	pp_card.pad(16, 12, 16, 12)
+	var pp_row := hbox(10)
+	var pp_ic := Icon.new("trophy", 20)
+	pp_ic.color = accent
+	pp_ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pp_row.add_child(pp_ic)
+	var pp_col := vbox(1)
+	pp_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pp_col.add_child(L("Global rating", "body", 600, 10, DIM, false, 0.16, true))
+	pp_stat = L("0 PP", "display", 800, 22, accent, true, 0.02, true)
+	pp_col.add_child(pp_stat)
+	pp_row.add_child(pp_col)
+	pp_card.add_child(pp_row)
+	acct_box.add_child(pp_card)
 	# signed out
 	acct_form = vbox(10)
 	var sg := seg([["signin", "Sign in"], ["register", "Create account"]], func(v): _set_acct_mode(v))
@@ -2135,6 +2157,7 @@ func show_account(on: bool) -> void:
 	_set_stick_direction(Vector2i.ZERO)
 	if on:
 		sync_account()
+		game.net.fetch_pp()
 		_acct_error("")
 		relayout()
 		_rise(acct_modal.get_child(0))
@@ -2169,6 +2192,7 @@ func sync_account() -> void:
 		acct_opt_lbl.text = ("Manage account" if reg else "Sign in / Create account").to_upper()
 	if acct_rename and not acct_rename.has_focus():
 		acct_rename.text = net.display_name
+	set_global_pp(net.global_pp)
 	if acct_modal.visible:
 		relayout()
 
@@ -3131,12 +3155,14 @@ func _update_lb_summary(info) -> void:
 		var runs := int(st.get("runs", 0))
 		var players := int(st.get("players", 0))
 		var mine = info.get("me")
+		var pp = info.get("pp") if info.get("pp") is Dictionary else {}
+		var me_pp := int(round(float(pp.get("me_pp", 0.0)))) if pp.has("me_pp") else -1
 		if mine is Dictionary and int(mine.get("rank", 0)) > 0:
 			var rk := int(mine.rank)
 			rank_txt = "#%d" % rk
 			time_txt = U.fmt(float(mine.get("time_ms", 0)) / 1000.0)
-			sub_txt = "of %d racers" % maxi(players, rk)
-			sum_txt = "You're #%d · %d racers" % [rk, players]
+			sub_txt = ("of %d racers · %d PP" % [maxi(players, rk), me_pp]) if me_pp >= 0 else ("of %d racers" % maxi(players, rk))
+			sum_txt = ("You're #%d · %d PP" % [rk, me_pp]) if me_pp >= 0 else ("You're #%d · %d racers" % [rk, players])
 		elif runs > 0:
 			sub_txt = "%d racers · not raced yet" % players
 			sum_txt = "%d runs · %d racers" % [runs, players]
@@ -3344,6 +3370,49 @@ func set_finish_rank(info) -> void:
 		f_rank.visible = true
 	else:
 		f_rank.visible = false
+
+
+## Performance Points earned on this run and the resulting global total, shown on the finish card.
+func set_finish_pp(pp) -> void:
+	if not (pp is Dictionary):
+		f_pp.visible = false
+		return
+	var track_pp := int(round(float(pp.get("track_pp", 0.0))))
+	set_global_pp(float(pp.get("global_pp", _global_pp)))
+	var txt := "%d PP" % track_pp
+	if bool(pp.get("improved", false)):
+		txt += "  ·  BEST"
+	txt += "   ⟶   %s GLOBAL PP" % _fmt_pp(_global_pp)
+	f_pp.text = txt
+	f_pp.add_theme_color_override("font_color", accent if track_pp > 0 else DIM)
+	f_pp.visible = true
+
+
+func set_global_pp(v: float) -> void:
+	_global_pp = v
+	if pp_stat:
+		pp_stat.text = "%s PP" % _fmt_pp(v)
+
+
+## The seedline_pp payload: global total, world rank and most valuable tracks.
+func render_pp(data: Dictionary) -> void:
+	set_global_pp(float(data.get("global_pp", _global_pp)))
+	if pp_stat:
+		var rank := int(data.get("rank", 0))
+		pp_stat.text = ("%s PP · WORLD #%d" % [_fmt_pp(_global_pp), rank]) if rank > 0 else ("%s PP" % _fmt_pp(_global_pp))
+
+
+func _fmt_pp(v: float) -> String:
+	var n := int(round(maxf(0.0, v)))
+	var s := str(n)
+	var out := ""
+	var c := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		c += 1
+		if c % 3 == 0 and i > 0:
+			out = "," + out
+	return out
 
 
 func render_favs() -> void:
@@ -3828,6 +3897,7 @@ func show_finish(track_txt: String, t: float, medal, delta_txt: String, delta_co
 		f_medal.text = "NO MEDAL"
 	f_delta.text = delta_txt
 	f_delta.add_theme_color_override("font_color", delta_col)
+	f_pp.visible = false
 	render_personal_best(f_best, pb)
 	sync_icons()
 	finish_modal.visible = true

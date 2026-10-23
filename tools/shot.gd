@@ -69,22 +69,14 @@ func _process(delta: float) -> bool:
 		elif mode == "debug":
 			main.ui.show_debug(true)
 		elif mode == "leaderboard":
-			main.ui.render_leaderboard({
-				"stats": {"runs": 128, "players": 64},
-				"me": {"rank": 7, "name": "MACCHIE8", "time_ms": 83456},
-				"top": [
-					{"rank": 1, "name": "Vortex", "time_ms": 79123},
-					{"rank": 2, "name": "Nova", "time_ms": 80044},
-					{"rank": 3, "name": "Blaze", "time_ms": 80890},
-					{"rank": 4, "name": "Quartz", "time_ms": 81550},
-					{"rank": 5, "name": "Echo", "time_ms": 82010},
-				],
-			})
+			main.ui.render_leaderboard(_lb_sample())
 			main.ui.show_leaderboard(true)
 		elif mode == "optionsmodal":
 			main.ui.show_options(true)
 		elif mode == "account":
+			main.net.global_pp = 1240.0
 			main.ui.show_account(true)
+			main.ui.render_pp({"global_pp": 1240.0, "rank": 42})
 		elif mode == "race" or mode == "finish" or mode == "pause":
 			main.start_race()
 	if mode in ["race", "finish", "pause"] and frame > 5 and args.has("drive"):
@@ -99,18 +91,13 @@ func _process(delta: float) -> bool:
 		var d := U.ang_diff(c.h, want)
 		main.keys["left"] = d > 0.08
 		main.keys["right"] = d < -0.08
+	if mode == "finish" and frame == int(args.get("frames", "120")) - 5:
+		main.ui.set_finish_pp({"track_pp": 164.0, "global_pp": 1240.0, "improved": true})
+	if mode == "account" and frame == int(args.get("frames", "120")) - 5:
+		main.net.global_pp = 1240.0
+		main.ui.render_pp({"global_pp": 1240.0, "rank": 42})
 	if mode == "leaderboard" and frame == int(args.get("frames", "120")) - 6:
-		main.ui.render_leaderboard({
-			"stats": {"runs": 128, "players": 64},
-			"me": {"rank": 7, "name": "MACCHIE8", "time_ms": 83456},
-			"top": [
-				{"rank": 1, "name": "Vortex", "time_ms": 79123},
-				{"rank": 2, "name": "Nova", "time_ms": 80044},
-				{"rank": 3, "name": "Blaze", "time_ms": 80890},
-				{"rank": 4, "name": "Quartz", "time_ms": 81550},
-				{"rank": 5, "name": "Echo", "time_ms": 82010},
-			],
-		})
+		main.ui.render_leaderboard(_lb_sample())
 	if mode == "pause" and frame == int(args.get("frames", "120")) - 10:
 		main.toggle_pause()
 	if mode == "finish" and frame == 20:
@@ -122,3 +109,18 @@ func _process(delta: float) -> bool:
 		print("saved ", args.get("out", "/tmp/shot.png"), " ", img.get_size(), " fps=", Engine.get_frames_per_second())
 		quit()
 	return false
+
+
+func _lb_sample() -> Dictionary:
+	return {
+		"stats": {"runs": 128, "players": 64},
+		"me": {"rank": 7, "name": "MACCHIE8", "time_ms": 83456},
+		"pp": {"players": 64, "me_pp": 142.0, "top_pp": 193.0, "max_pp": 300.0},
+		"top": [
+			{"rank": 1, "name": "Vortex", "time_ms": 79123},
+			{"rank": 2, "name": "Nova", "time_ms": 80044},
+			{"rank": 3, "name": "Blaze", "time_ms": 80890},
+			{"rank": 4, "name": "Quartz", "time_ms": 81550},
+			{"rank": 5, "name": "Echo", "time_ms": 82010},
+		],
+	}
