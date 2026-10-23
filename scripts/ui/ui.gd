@@ -34,6 +34,8 @@ var tag: Label
 var brand_rule: Glass
 var btn_sound: Tap
 var ic_sound: Icon
+var btn_debug: Tap
+var ic_debug: Icon
 var sheet: Glass
 var sheet_box: Control
 var trackhead: VBoxContainer
@@ -85,6 +87,19 @@ var _events_now := 0.0
 var _events_t0 := 0
 var acct_modal: Control
 var seed_modal: Control
+# debug track-preview compare screen (hidden dev tool; opened from the home top bar)
+var debug_modal: Control
+var debug_box: VBoxContainer
+var debug_scroll: ScrollContainer
+var debug_grid: GridContainer
+var debug_seed_in: LineEdit
+var debug_reroll: Tap
+var debug_close: Tap
+var debug_seeds: Array[String] = []
+var debug_preview_views: Array[Dictionary] = []
+var _debug_revision := 0
+var _debug_task_running := false
+const DEBUG_COUNT := 12
 var seed_dialog_button: Tap
 var seed_dialog_caption: Label
 var seed_dialog_box: VBoxContainer
@@ -400,7 +415,9 @@ func focus_default() -> void:
 	if color_popup and color_popup.visible:
 		return
 	if modal_open():
-		if seed_modal.visible:
+		if debug_modal.visible:
+			debug_reroll.grab_focus()
+		elif seed_modal.visible:
 			seed_in.grab_focus()
 		else:
 			acct_email.grab_focus()
@@ -593,6 +610,12 @@ func _build_menu() -> void:
 	ic_sound = sb[1]
 	btn_sound.pressed.connect(func(): game.toggle_sound())
 	mtop.add_child(btn_sound)
+	var db := icon_btn("bug")
+	btn_debug = db[0]
+	ic_debug = db[1]
+	btn_debug.tooltip_text = "Debug: compare track previews across seeds"
+	btn_debug.pressed.connect(func(): show_debug(true))
+	mtop.add_child(btn_debug)
 	_build_nav()
 	_build_bottombar()
 	# leaderboard side panel (kept hidden in the new shell; rankings live inside the Play section)
@@ -709,28 +732,46 @@ func _build_menu() -> void:
 	_build_garage_pane(panes_box)
 	_build_tracks_pane(panes_box)
 	_build_options_pane(panes_box)
-	# play — the hero button (Rocket League style: glossy accent slab with a neon glow)
-	btn_play = tap(accent, Color(0, 0, 0, 0), 16.0)
+	# play — the hero button: glossy accent slab with a play glyph, perfectly centred wordmark and a speed chevron
+	btn_play = tap(accent, Color(0, 0, 0, 0), 18.0)
 	btn_play.custom_minimum_size = Vector2(0, 76)
-	btn_play.pad(14, 13, 14, 15)
-	var prow := hbox(14)
+	btn_play.pad(16, 12, 16, 14)
+	var prow := hbox(10)
 	prow.alignment = BoxContainer.ALIGNMENT_CENTER
-	var ptext := vbox(1)
+	# left play glyph (fixed-width so the wordmark stays dead-centre)
+	var play_ic := Icon.new("play", 22)
+	play_ic.filled = true
+	play_ic.color = on_accent
+	var play_wrap := center(play_ic)
+	play_wrap.custom_minimum_size = Vector2(46, 0)
+	play_wrap.size_flags_vertical = Control.SIZE_FILL
+	var ptext := vbox(2)
 	ptext.alignment = BoxContainer.ALIGNMENT_CENTER
-	var race := L("RACE", "display", 800, 25, on_accent, true, 0.12, true)
+	ptext.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var race := L("RACE", "display", 800, 27, on_accent, true, 0.16, true)
 	race.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var enter := L("ENTER / A / CROSS", "mono", 700, 10, Color(on_accent, 0.62), false, 0.08)
+	race.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	race.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.22))
+	race.add_theme_constant_override("shadow_offset_y", 1)
+	var enter := L("ENTER / A / CROSS", "mono", 700, 10, Color(on_accent, 0.55), false, 0.12)
 	enter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	enter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ptext.add_child(race)
 	ptext.add_child(enter)
-	var chev := L("»", "display", 900, 30, Color(on_accent, 0.85), true)
-	chev.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	# right speed chevron, mirrored to the play glyph so the wordmark stays centred
+	var chev := L("\u00bb", "display", 900, 26, Color(on_accent, 0.7), true)
+	chev.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var chev_wrap := center(chev)
+	chev_wrap.custom_minimum_size = Vector2(46, 0)
+	chev_wrap.size_flags_vertical = Control.SIZE_FILL
+	prow.add_child(play_wrap)
 	prow.add_child(ptext)
-	prow.add_child(chev)
-	btn_play.add_child(center(prow))
+	prow.add_child(chev_wrap)
+	btn_play.add_child(prow)
 	btn_play.set_meta("race", race)
 	btn_play.set_meta("enter", enter)
 	btn_play.set_meta("chev", chev)
+	btn_play.set_meta("play", play_ic)
 	btn_play.pressed.connect(func(): game.start_race())
 	_style_play()
 	sheet_box.add_child(btn_play)
@@ -1524,6 +1565,7 @@ func _build_modals() -> void:
 	fg.add_child(b4[0])
 	fbox.add_child(fg)
 	_build_account_modal()
+	_build_debug_modal()
 
 
 func _field(placeholder: String, secret := false) -> LineEdit:
@@ -1775,6 +1817,8 @@ func modal_open() -> bool:
 
 
 func _active_dialog() -> Control:
+	if debug_modal != null and debug_modal.visible:
+		return debug_modal
 	if acct_modal != null and acct_modal.visible:
 		return acct_modal
 	if seed_modal != null and seed_modal.visible:
@@ -1783,7 +1827,9 @@ func _active_dialog() -> Control:
 
 
 func _close_dialog() -> void:
-	if acct_modal != null and acct_modal.visible:
+	if debug_modal != null and debug_modal.visible:
+		show_debug(false)
+	elif acct_modal != null and acct_modal.visible:
 		show_account(false)
 	elif seed_modal != null and seed_modal.visible:
 		show_seed_dialog(false)
@@ -1889,6 +1935,233 @@ func _layout_seed_dialog(W: float, H: float, sl: float, sr: float, st: float, sb
 	card._sync()
 
 
+func _build_debug_modal() -> void:
+	debug_modal = ColorRect.new()
+	(debug_modal as ColorRect).color = Color(5 / 255.0, 6 / 255.0, 10 / 255.0, 0.82)
+	debug_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	debug_modal.mouse_filter = Control.MOUSE_FILTER_STOP
+	debug_modal.visible = false
+	add_child(debug_modal)
+	var card := glass(PANEL, LINE, 20.0, 3.0)
+	card.pad(22, 20, 22, 20)
+	card.clip_contents = true
+	debug_modal.add_child(card)
+	debug_box = vbox(12)
+	debug_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	debug_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	card.add_child(debug_box)
+	var head := hbox(8)
+	var htext := vbox(2)
+	htext.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	htext.add_child(eyebrow("Debug"))
+	htext.add_child(L("Track previews", "display", 800, 24, FG, true, 0.0, true))
+	head.add_child(htext)
+	var cb := icon_btn("x")
+	debug_close = cb[0]
+	debug_close.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	debug_close.pressed.connect(func(): show_debug(false))
+	head.add_child(debug_close)
+	debug_box.add_child(head)
+	var cap := L("Compare the generated minimap for different seeds. Tap a tile to load that track.", "body", 400, 12, DIM)
+	cap.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	cap.custom_minimum_size = Vector2(1, 0)
+	debug_box.add_child(cap)
+	var tools := hbox(8)
+	debug_seed_in = LineEdit.new()
+	debug_seed_in.placeholder_text = "Add a seed, e.g. A7K2M9Q4B6N8P3RX"
+	debug_seed_in.max_length = 24
+	debug_seed_in.custom_minimum_size = Vector2(0, 42)
+	debug_seed_in.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	debug_seed_in.context_menu_enabled = true
+	debug_seed_in.add_theme_stylebox_override("normal", (seed_in.get_theme_stylebox("normal") as StyleBox).duplicate())
+	debug_seed_in.add_theme_stylebox_override("focus", (seed_in.get_theme_stylebox("focus") as StyleBox).duplicate())
+	debug_seed_in.add_theme_font_override("font", UiFonts.get_font("mono", 500))
+	debug_seed_in.add_theme_font_size_override("font_size", 14)
+	debug_seed_in.add_theme_color_override("font_color", FG)
+	debug_seed_in.add_theme_color_override("font_placeholder_color", DIM)
+	debug_seed_in.add_theme_color_override("caret_color", FG)
+	debug_seed_in.text_changed.connect(func(t):
+		var up: String = t.to_upper()
+		if up != t:
+			var c := debug_seed_in.caret_column
+			debug_seed_in.text = up
+			debug_seed_in.caret_column = c)
+	debug_seed_in.text_submitted.connect(func(_t): _debug_add_seed())
+	tools.add_child(debug_seed_in)
+	var add := _cbtn("Add", false, "ENTER")
+	add[0].size_flags_horizontal = Control.SIZE_SHRINK_END
+	add[0].custom_minimum_size = Vector2(92, 42)
+	add[0].pressed.connect(func(): _debug_add_seed())
+	tools.add_child(add[0])
+	var rr := _cbtn("Reroll", true)
+	debug_reroll = rr[0]
+	debug_reroll.size_flags_horizontal = Control.SIZE_SHRINK_END
+	debug_reroll.custom_minimum_size = Vector2(108, 42)
+	debug_reroll.pressed.connect(func(): _debug_reroll())
+	tools.add_child(debug_reroll)
+	debug_box.add_child(tools)
+	debug_scroll = ScrollContainer.new()
+	debug_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	debug_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	debug_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	debug_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	debug_box.add_child(debug_scroll)
+	debug_grid = GridContainer.new()
+	debug_grid.columns = 3
+	debug_grid.add_theme_constant_override("h_separation", 10)
+	debug_grid.add_theme_constant_override("v_separation", 10)
+	debug_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	debug_scroll.add_child(debug_grid)
+
+
+func _debug_cell(seed_s: String) -> Control:
+	var parsed = game.parse_seed(seed_s)
+	var env_s := str(parsed.env) if parsed != null else "CANYON"
+	if not Envs.DATA.has(env_s):
+		env_s = "CANYON"
+	var acc := U.css(Envs.DATA[env_s].accent)
+	var cell := tap(PANEL2, LINE, 12.0)
+	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cell.pad(8, 8, 8, 8)
+	cell.tooltip_text = "Load " + seed_s
+	var col := vbox(6)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var pbox := glass(Color(0, 0, 0, 0.26), LINE, 9.0)
+	pbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pbox.pad(3, 3, 3, 3)
+	var preview := MapView.new()
+	preview.preview = true
+	preview.custom_minimum_size = Vector2(120, 120)
+	pbox.add_child(preview)
+	col.add_child(pbox)
+	var name_lbl := L(str(Envs.DATA[env_s].name), "display", 800, 13, FG, true, 0.0, true)
+	name_lbl.clip_text = true
+	name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_lbl.custom_minimum_size = Vector2(1, 0)
+	col.add_child(name_lbl)
+	var seed_lbl := L(seed_s, "mono", 500, 10, DIM)
+	seed_lbl.clip_text = true
+	seed_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	seed_lbl.custom_minimum_size = Vector2(1, 0)
+	col.add_child(seed_lbl)
+	cell.add_child(col)
+	cell.pressed.connect(func():
+		show_debug(false)
+		game.load_fav(seed_s, env_s))
+	debug_preview_views.append({"map": preview, "seed": seed_s, "env": env_s, "accent": acc, "name": name_lbl})
+	return cell
+
+
+func _debug_fill_random() -> void:
+	while debug_seeds.size() < DEBUG_COUNT:
+		var code := U.rand_seed_code()
+		if not debug_seeds.has(code):
+			debug_seeds.append(code)
+
+
+func _debug_reset_seeds() -> void:
+	debug_seeds.clear()
+	if game.track != null and str(game.track.seed) != "":
+		debug_seeds.append(str(game.track.seed))
+	_debug_fill_random()
+
+
+func _debug_reroll() -> void:
+	debug_seeds.clear()
+	_debug_fill_random()
+	_rebuild_debug_grid()
+
+
+func _debug_add_seed() -> void:
+	var parsed = game.parse_seed(debug_seed_in.text)
+	if parsed == null:
+		toast("Enter a seed first")
+		return
+	var sc := str(parsed.seed)
+	debug_seed_in.text = ""
+	if debug_seeds.has(sc):
+		toast("Already shown")
+		debug_seed_in.grab_focus()
+		return
+	debug_seeds.push_front(sc)
+	_rebuild_debug_grid()
+	debug_seed_in.grab_focus()
+
+
+func _rebuild_debug_grid() -> void:
+	if debug_grid == null:
+		return
+	_debug_revision += 1
+	debug_preview_views.clear()
+	for child in debug_grid.get_children():
+		debug_grid.remove_child(child)
+		child.queue_free()
+	for seed_s in debug_seeds:
+		debug_grid.add_child(_debug_cell(seed_s))
+	if debug_modal.visible:
+		call_deferred("_populate_debug")
+	relayout()
+
+
+func _populate_debug() -> void:
+	if _debug_task_running or debug_modal == null or not debug_modal.visible:
+		return
+	_debug_task_running = true
+	var revision := _debug_revision
+	for entry in debug_preview_views:
+		if revision != _debug_revision or not debug_modal.visible:
+			break
+		var preview := entry.map as MapView
+		if not is_instance_valid(preview) or preview.t != null:
+			continue
+		var track := _cached_fav_track(str(entry.seed), str(entry.env))
+		preview.set_track(track, entry.accent)
+		var nm := entry.get("name") as Label
+		if is_instance_valid(nm) and track != null and str(track.name) != "":
+			nm.text = str(track.name).to_upper()
+		await get_tree().process_frame
+	_debug_task_running = false
+
+
+func show_debug(on: bool) -> void:
+	if debug_modal == null or on == debug_modal.visible:
+		return
+	debug_modal.visible = on
+	_set_stick_direction(Vector2i.ZERO)
+	if on:
+		if debug_seeds.is_empty():
+			_debug_reset_seeds()
+		_rebuild_debug_grid()
+		_rise(debug_modal.get_child(0))
+		debug_reroll.grab_focus()
+	else:
+		var focus := _focus_owner()
+		if focus and debug_modal.is_ancestor_of(focus):
+			focus.release_focus()
+		if menu_on:
+			btn_debug.grab_focus()
+
+
+func _layout_debug(W: float, H: float, sl: float, sr: float, st: float, sb: float) -> void:
+	if debug_modal == null:
+		return
+	var card: Glass = debug_modal.get_child(0)
+	var cw := minf(980.0, W - sl - sr - 16.0)
+	var ch := minf(760.0, H - st - sb - 16.0)
+	card.size = Vector2(cw, ch)
+	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - ch) / 2.0))
+	card._sync()
+	var grid_w := cw - 44.0 - 12.0
+	var cols := clampi(int(grid_w / 150.0), 1, 6)
+	debug_grid.columns = cols
+	var cellw := (grid_w - 10.0 * (cols - 1)) / float(cols)
+	var pw := maxf(60.0, cellw - 16.0 - 6.0)
+	for entry in debug_preview_views:
+		var mv := entry.map as MapView
+		if is_instance_valid(mv):
+			mv.custom_minimum_size = Vector2(pw, pw)
+
+
 func _build_overlays() -> void:
 	toast_box = glass(PANEL, LINE, 10.0, 2.5)
 	toast_box.pad(14, 8, 14, 8)
@@ -1950,6 +2223,8 @@ func relayout() -> void:
 	brand.position = Vector2(sl, top_pad)
 	btn_sound.size = Vector2(42, 42)
 	btn_sound.position = Vector2(W - sr - 42.0, top_pad + (bsz.y - 42.0) / 2.0)
+	btn_debug.size = Vector2(42, 42)
+	btn_debug.position = Vector2(W - sr - 42.0 - 42.0 - 8.0, btn_sound.position.y)
 	# bottom toolbar
 	var bar_y := H - sb - bar_h - 10.0
 	bottombar.position = Vector2(sl, bar_y)
@@ -1967,15 +2242,15 @@ func relayout() -> void:
 	(btn_play.get_meta("enter") as Label).visible = not landscape_short
 	(btn_play.get_meta("chev") as Label).visible = not landscape_short
 	if landscape_short:
-		btn_play.custom_minimum_size.y = 50.0
+		btn_play.custom_minimum_size.y = 52.0
 		btn_play.inset = 8.0
-		btn_play.pad(10, 8, 10, 9)
-		restyle(race_l, 19.0)
+		btn_play.pad(12, 8, 12, 9)
+		restyle(race_l, 21.0)
 	else:
 		btn_play.custom_minimum_size.y = 76.0
-		btn_play.inset = 14.0
-		btn_play.pad(14, 13, 14, 15)
-		restyle(race_l, 25.0)
+		btn_play.inset = 12.0
+		btn_play.pad(16, 12, 16, 14)
+		restyle(race_l, 27.0)
 	# track head sizing
 	var name_size := 24.0 if landscape_short else clampf(7.4 * vw, 26.0, 40.0)
 	var pm := 60.0 if landscape_short else clampf(21.0 * vw, 72.0, 96.0)
@@ -2065,6 +2340,7 @@ func relayout() -> void:
 	# modals
 	_layout_account(W, H, sl, sr, st, sb)
 	_layout_seed_dialog(W, H, sl, sr, st, sb)
+	_layout_debug(W, H, sl, sr, st, sb)
 	for m in [pause_modal, finish_modal]:
 		var card: Glass = m.get_child(0)
 		var cw := minf(420.0, W - sl - sr)
@@ -2352,18 +2628,23 @@ func set_accent(a: Color, on: Color) -> void:
 func _style_play() -> void:
 	if not btn_play:
 		return
-	btn_play.fill_top = accent.lightened(0.16)
-	btn_play.fill_bot = accent.darkened(0.2)
-	btn_play.radius = Vector4(16, 16, 16, 16)
-	btn_play.glow_col = Color(accent, 0.55)
-	btn_play.glow = 18.0
-	btn_play.inset = 14.0
-	btn_play.sheen = 0.2
+	# glossy accent slab: bright top, deep bottom, a darker inner lip for depth and a soft neon halo
+	btn_play.fill_top = accent.lightened(0.26)
+	btn_play.fill_bot = accent.darkened(0.28)
+	btn_play.radius = Vector4(18, 18, 18, 18)
+	btn_play.glow_col = Color(accent, 0.5)
+	btn_play.glow = 22.0
+	btn_play.inset = 12.0
+	btn_play.inset_col = Color(accent.darkened(0.5), 0.55)
+	btn_play.inset_h = 16.0
+	btn_play.sheen = 0.32
 	btn_play._tinted = false  # re-baseline so a focused button re-tints from the new accent gradient
-	btn_play.set_border_state(Color(1, 1, 1, 0.3), 1.5)
+	btn_play.set_border_state(Color(1, 1, 1, 0.34), 1.5)
 	(btn_play.get_meta("race") as Label).add_theme_color_override("font_color", on_accent)
-	(btn_play.get_meta("enter") as Label).add_theme_color_override("font_color", Color(on_accent, 0.62))
-	(btn_play.get_meta("chev") as Label).add_theme_color_override("font_color", Color(on_accent, 0.85))
+	(btn_play.get_meta("enter") as Label).add_theme_color_override("font_color", Color(on_accent, 0.55))
+	(btn_play.get_meta("chev") as Label).add_theme_color_override("font_color", Color(on_accent, 0.7))
+	(btn_play.get_meta("play") as Icon).color = on_accent
+	(btn_play.get_meta("play") as Icon).queue_redraw()
 
 
 func _all_taps(n: Node) -> Array:

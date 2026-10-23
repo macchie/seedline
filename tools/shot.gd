@@ -62,6 +62,8 @@ func _process(delta: float) -> bool:
 			main.set_tab("events")
 		elif mode == "seed":
 			main.ui.show_seed_dialog(true)
+		elif mode == "debug":
+			main.ui.show_debug(true)
 		elif mode == "account":
 			main.ui.show_account(true)
 		elif mode == "race" or mode == "finish" or mode == "pause":
