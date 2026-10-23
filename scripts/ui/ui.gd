@@ -3694,8 +3694,7 @@ func sync_player_card() -> void:
 func _sync_card_best() -> void:
 	if card_best_lbl == null:
 		return
-	var best = game.best
-	var bt = best.t if (best is Dictionary and best.has("t")) else null
+	var bt = _best_time(game.track.seed) if game.track != null else null
 	card_best_lbl.text = ("BEST  " + U.fmt(bt)) if bt != null else "NOT RACED YET"
 	card_best_lbl.add_theme_color_override("font_color", accent if bt != null else DIM)
 	var med = null
