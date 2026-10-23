@@ -54,16 +54,17 @@ func _process(delta: float) -> bool:
 			for sc in ["K7Q2XM", "ZX9M42", "QW3RT8", "AB12CD"]:
 				var tt = TrackGen.generate(sc, main.parse_seed(sc).env)
 				main.favs.append({"seed": sc, "name": tt.name, "env": tt.env_key, "best": null, "medals": tt.medals, "v": 5})
-			main.ui.render_favs()
 			main.recent_tracks = [{"seed": main.track.seed, "name": main.track.name, "env": main.track.env_key}]
-			main.ui.render_recent_tracks()
-			main.set_tab("tracks")
+			main.ui.show_section("tracks")
 			if mode == "trackaction":
 				main.ui.show_track_action("K7Q2XM", main.parse_seed("K7Q2XM").env, "Tide Atoll", true)
 		elif mode == "options":
-			main.set_tab("options")
+			main.ui.show_options(true)
 		elif mode == "events":
-			main.set_tab("events")
+			main.ui.show_section("events")
+		elif mode == "ranks":
+			main.ui.show_leaderboards_dialog()
+			main.ui.render_leaderboards_data(_ranks_sample())
 		elif mode == "seed":
 			main.ui.show_seed_dialog(true)
 		elif mode == "debug":
@@ -96,6 +97,8 @@ func _process(delta: float) -> bool:
 	if mode == "account" and frame == int(args.get("frames", "120")) - 5:
 		main.net.global_pp = 1240.0
 		main.ui.render_pp({"global_pp": 1240.0, "rank": 42})
+	if mode == "ranks" and frame == int(args.get("frames", "120")) - 5:
+		main.ui.render_leaderboards_data(_ranks_sample())
 	if mode == "leaderboard" and frame == int(args.get("frames", "120")) - 6:
 		main.ui.render_leaderboard(_lb_sample())
 	if mode == "pause" and frame == int(args.get("frames", "120")) - 10:
@@ -123,4 +126,28 @@ func _lb_sample() -> Dictionary:
 			{"rank": 4, "name": "Quartz", "time_ms": 81550},
 			{"rank": 5, "name": "Echo", "time_ms": 82010},
 		],
+	}
+
+
+func _ranks_sample() -> Dictionary:
+	return {
+		"global": {
+			"me": {"rank": 42, "value": 1240.0},
+			"top": [
+				{"rank": 1, "name": "Vortex", "value": 3980.0},
+				{"rank": 2, "name": "Nova", "value": 3610.0},
+				{"rank": 3, "name": "Blaze", "value": 3120.0},
+				{"rank": 4, "name": "Quartz", "value": 2740.0},
+				{"rank": 5, "name": "Echo", "value": 2210.0},
+				{"rank": 6, "name": "Drift", "value": 1980.0},
+			],
+		},
+		"explorers": {
+			"me": {"rank": 12, "value": 87.0},
+			"top": [
+				{"rank": 1, "name": "Nomad", "value": 342.0},
+				{"rank": 2, "name": "Vortex", "value": 288.0},
+				{"rank": 3, "name": "Rook", "value": 201.0},
+			],
+		},
 	}

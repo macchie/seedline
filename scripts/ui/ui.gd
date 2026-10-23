@@ -172,6 +172,25 @@ var sens_out: Label
 var options_body: VBoxContainer
 var options_modal: Control
 var options_scroll: ScrollContainer
+# Rocket-League-style nav: Play/Garage stay in the scene, other entries open full-screen dialogs.
+var _active_section := ""
+var events_body: VBoxContainer
+var tracks_body: VBoxContainer
+var section_modal: Control
+var section_scroll: ScrollContainer
+var section_title_lbl: Label
+var _section_key := ""
+# global leaderboards dialog (skill by PP + exploration by unique tracks)
+var lbd_modal: Control
+var lbd_box: VBoxContainer
+var lbd_scroll: ScrollContainer
+var lbd_list: VBoxContainer
+var lbd_hero_rank: Label
+var lbd_hero_val: Label
+var lbd_hero_sub: Label
+var lbd_seg: Array = []
+var lbd_board := "global"
+var _lbd_data = null
 var opt_segs := {}
 var pad_boost: Tap
 var bind_dev := "kb"
@@ -439,7 +458,11 @@ func focus_default() -> void:
 	if color_popup and color_popup.visible:
 		return
 	if modal_open():
-		if options_modal.visible:
+		if section_modal.visible:
+			(section_modal.get_meta("close") as Control).grab_focus()
+		elif lbd_modal.visible:
+			(lbd_modal.get_meta("close") as Control).grab_focus()
+		elif options_modal.visible:
 			sens_slider.grab_focus()
 		elif track_action_modal.visible:
 			track_action_race.grab_focus()
@@ -799,7 +822,8 @@ func _build_nav() -> void:
 	nav_menu = Control.new()
 	nav_menu.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	mtop.add_child(nav_menu)
-	for t in [["drive", "Play"], ["events", "Events"], ["garage", "Garage"], ["tracks", "Tracks"], ["options", "Options"]]:
+	# Play and Garage stay in the scene (the landing + the live car); the rest open full-screen dialogs.
+	for t in [["drive", "Play"], ["events", "Events"], ["garage", "Garage"], ["tracks", "Tracks"], ["leaderboards", "Ranks"], ["options", "Options"]]:
 		var b := tap(Color(1, 1, 1, 0.025), Color(0, 0, 0, 0), 10.0)
 		b.custom_minimum_size = Vector2(0, 44)
 		b.focus_mode = Control.FOCUS_ALL
@@ -808,9 +832,28 @@ func _build_nav() -> void:
 		b.set_meta("v", t[0])
 		b.set_meta("lbl", l)
 		var v: String = t[0]
-		b.pressed.connect(func(): game.set_tab(v))
+		b.pressed.connect(func(): _nav_select(v))
 		nav_menu.add_child(b)
 		tabs.append(b)
+
+
+## Route a nav pick: Play/Garage switch the scene; everything else opens its dialog.
+func _nav_select(v: String) -> void:
+	if v == "drive" or v == "garage":
+		_active_section = ""
+		game.set_tab(v)
+		return
+	_active_section = v
+	_sync_tab_styles()
+	match v:
+		"events":
+			show_section("events")
+		"tracks":
+			show_section("tracks")
+		"leaderboards":
+			show_leaderboards_dialog()
+		"options":
+			show_options(true)
 
 
 ## Persistent bottom toolbar: player card (avatar + name + status) plus now-racing / best / online.
@@ -959,16 +1002,19 @@ func _build_track_pane(parent: Control) -> void:
 
 func _build_events_pane(parent: Control) -> void:
 	var p := _pane(parent, "events")
+	events_body = vbox(12)
+	events_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	p.add_child(events_body)
 	events_note = L("Connect to compete in the daily and weekly seed challenges.", "body", 400, 12, DIM)
 	events_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	events_note.custom_minimum_size = Vector2(1, 0)
-	p.add_child(events_note)
+	events_body.add_child(events_note)
 	events_grid = GridContainer.new()
 	events_grid.columns = 2
 	events_grid.add_theme_constant_override("h_separation", 10)
 	events_grid.add_theme_constant_override("v_separation", 10)
 	events_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	p.add_child(events_grid)
+	events_body.add_child(events_grid)
 	_build_event_card(events_grid, "daily", "Daily Seed", "A fresh seed every day. Set the fastest time before midnight UTC.")
 	_build_event_card(events_grid, "weekly", "Weekly Seed", "One seed all week. Grind for the top of the board.")
 
@@ -1213,20 +1259,23 @@ func _build_garage_pane(parent: Control) -> void:
 
 func _build_tracks_pane(parent: Control) -> void:
 	var p := _pane(parent, "tracks")
-	p.add_child(eyebrow("Saved tracks"))
+	tracks_body = vbox(10)
+	tracks_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	p.add_child(tracks_body)
+	tracks_body.add_child(eyebrow("Saved tracks"))
 	fav_list = _track_grid()
-	p.add_child(fav_list)
+	tracks_body.add_child(fav_list)
 	fav_empty = L("No saved tracks yet. Save a track from Drive to keep it here.", "body", 400, 13, DIM)
 	fav_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	fav_empty.custom_minimum_size = Vector2(0, 36)
-	p.add_child(fav_empty)
-	p.add_child(eyebrow("Last played"))
+	tracks_body.add_child(fav_empty)
+	tracks_body.add_child(eyebrow("Last played"))
 	recent_track_list = _track_grid()
-	p.add_child(recent_track_list)
+	tracks_body.add_child(recent_track_list)
 	recent_track_empty = L("Tracks you race or watch will appear here.", "body", 400, 13, DIM)
 	recent_track_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	recent_track_empty.custom_minimum_size = Vector2(0, 36)
-	p.add_child(recent_track_empty)
+	tracks_body.add_child(recent_track_empty)
 
 
 func _track_grid() -> GridContainer:
@@ -1836,6 +1885,8 @@ func _build_modals() -> void:
 	_build_leaderboard_modal()
 	_build_track_action_modal()
 	_build_options_modal()
+	_build_section_modal()
+	_build_leaderboards_dialog()
 
 
 func _field(placeholder: String, secret := false) -> LineEdit:
@@ -2103,6 +2154,10 @@ func modal_open() -> bool:
 
 
 func _active_dialog() -> Control:
+	if section_modal != null and section_modal.visible:
+		return section_modal
+	if lbd_modal != null and lbd_modal.visible:
+		return lbd_modal
 	if options_modal != null and options_modal.visible:
 		return options_modal
 	if track_action_modal != null and track_action_modal.visible:
@@ -2119,7 +2174,11 @@ func _active_dialog() -> Control:
 
 
 func _close_dialog() -> void:
-	if options_modal != null and options_modal.visible:
+	if section_modal != null and section_modal.visible:
+		hide_section()
+	elif lbd_modal != null and lbd_modal.visible:
+		hide_leaderboards()
+	elif options_modal != null and options_modal.visible:
 		show_options(false)
 	elif track_action_modal != null and track_action_modal.visible:
 		hide_track_action()
@@ -2522,6 +2581,9 @@ func show_options(on: bool) -> void:
 		if options_body.get_parent() == options_scroll:
 			options_scroll.remove_child(options_body)
 			panes["options"].add_child(options_body)
+		if _active_section == "options":
+			_active_section = ""
+			_sync_tab_styles()
 		if pause_modal.visible:
 			pause_resume.grab_focus()
 		elif menu_on:
@@ -2532,7 +2594,7 @@ func _layout_options(W: float, H: float, sl: float, sr: float, st: float, sb: fl
 	if options_modal == null or not options_modal.visible:
 		return
 	var card: Glass = options_modal.get_child(0)
-	var cw := minf(460.0, W - sl - sr - 16.0)
+	var cw := minf(620.0, W - sl - sr - 16.0)
 	var avail := H - st - sb - 16.0
 	options_body.custom_minimum_size.x = cw - 44.0
 	# size the keybind buttons for the modal width (overrides the menu-panel sizing)
@@ -2549,6 +2611,318 @@ func _layout_options(W: float, H: float, sl: float, sr: float, st: float, sb: fl
 	card.size = Vector2(cw, 0)
 	card.size = Vector2(cw, minf(card.get_combined_minimum_size().y, avail))
 	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - card.size.y) / 2.0))
+	card._sync()
+
+
+func _build_section_modal() -> void:
+	section_modal = ColorRect.new()
+	(section_modal as ColorRect).color = Color(5 / 255.0, 6 / 255.0, 10 / 255.0, 0.72)
+	section_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	section_modal.mouse_filter = Control.MOUSE_FILTER_STOP
+	section_modal.visible = false
+	add_child(section_modal)
+	var card := glass(PANEL, LINE, 20.0, 3.0)
+	card.pad(22, 18, 22, 18)
+	card.clip_contents = true
+	section_modal.add_child(card)
+	var box := vbox(12)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	card.add_child(box)
+	var head := hbox(8)
+	var htext := vbox(2)
+	htext.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	htext.add_child(eyebrow("Main menu"))
+	section_title_lbl = L("Menu", "display", 800, 26, FG, true, 0.0, true)
+	htext.add_child(section_title_lbl)
+	head.add_child(htext)
+	var cb := icon_btn("x")
+	cb[0].size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cb[0].pressed.connect(func(): hide_section())
+	head.add_child(cb[0])
+	section_modal.set_meta("close", cb[0])
+	box.add_child(head)
+	section_scroll = ScrollContainer.new()
+	section_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	section_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	section_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	section_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(section_scroll)
+
+
+func _section_body(key: String) -> Control:
+	if key == "events":
+		return events_body
+	if key == "tracks":
+		return tracks_body
+	return null
+
+
+func show_section(key: String) -> void:
+	if section_modal == null:
+		return
+	var body := _section_body(key)
+	if body == null:
+		return
+	if body.get_parent() != section_scroll:
+		body.get_parent().remove_child(body)
+		section_scroll.add_child(body)
+	_section_key = key
+	section_title_lbl.text = ("Events" if key == "events" else "Tracks").to_upper()
+	if key == "events":
+		events_note.visible = not game.net.is_online()
+		events_note.text = "Connect to compete in the daily and weekly seed challenges." if not game.net.is_online() else "Loading today's challenges\u2026"
+		game.fetch_events()
+	elif key == "tracks":
+		render_favs()
+		render_recent_tracks()
+	section_modal.visible = true
+	_set_stick_direction(Vector2i.ZERO)
+	relayout()
+	_rise(section_modal.get_child(0))
+	if key == "tracks":
+		call_deferred("_populate_fav_previews")
+		call_deferred("_focus_tracks_entry")
+	else:
+		(section_modal.get_meta("close") as Control).grab_focus()
+
+
+func hide_section() -> void:
+	if section_modal == null or not section_modal.visible:
+		return
+	var key := _section_key
+	var body := _section_body(key)
+	if body != null and body.get_parent() == section_scroll:
+		section_scroll.remove_child(body)
+		panes[key].add_child(body)
+	section_modal.visible = false
+	_section_key = ""
+	_set_stick_direction(Vector2i.ZERO)
+	var focus := _focus_owner()
+	if focus and section_modal.is_ancestor_of(focus):
+		focus.release_focus()
+	_active_section = ""
+	_sync_tab_styles()
+	if menu_on:
+		_focus_nav(key)
+
+
+func _focus_nav(key: String) -> void:
+	for b in tabs:
+		if b.get_meta("v") == key:
+			b.grab_focus()
+			return
+	if btn_play:
+		btn_play.grab_focus()
+
+
+func _layout_section(W: float, H: float, sl: float, sr: float, st: float, sb: float) -> void:
+	if section_modal == null or not section_modal.visible:
+		return
+	var card: Glass = section_modal.get_child(0)
+	var cw := minf(1040.0, W - sl - sr - 16.0)
+	var ch := minf(900.0, H - st - sb - 16.0)
+	var inner := cw - 44.0
+	var body := _section_body(_section_key)
+	if body:
+		body.custom_minimum_size.x = inner
+	if _section_key == "events" and events_grid:
+		events_grid.columns = 2 if inner >= 430.0 else 1
+	elif _section_key == "tracks":
+		var cols := clampi(int(inner / 160.0), 2, 5)
+		if fav_list:
+			fav_list.columns = cols
+		if recent_track_list:
+			recent_track_list.columns = cols
+	card.size = Vector2(cw, ch)
+	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - ch) / 2.0))
+	card._sync()
+
+
+func _build_leaderboards_dialog() -> void:
+	lbd_modal = ColorRect.new()
+	(lbd_modal as ColorRect).color = Color(5 / 255.0, 6 / 255.0, 10 / 255.0, 0.72)
+	lbd_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lbd_modal.mouse_filter = Control.MOUSE_FILTER_STOP
+	lbd_modal.visible = false
+	add_child(lbd_modal)
+	var card := glass(PANEL, LINE, 20.0, 3.0)
+	card.pad(22, 18, 22, 18)
+	card.clip_contents = true
+	lbd_modal.add_child(card)
+	lbd_box = vbox(12)
+	lbd_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbd_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	card.add_child(lbd_box)
+	var head := hbox(8)
+	var htext := vbox(2)
+	htext.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	htext.add_child(eyebrow("Global standings"))
+	htext.add_child(L("Leaderboards", "display", 800, 26, FG, true, 0.0, true))
+	head.add_child(htext)
+	var cb := icon_btn("x")
+	cb[0].size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cb[0].pressed.connect(func(): hide_leaderboards())
+	head.add_child(cb[0])
+	lbd_modal.set_meta("close", cb[0])
+	lbd_box.add_child(head)
+	var sg := seg([["global", "Global PP"], ["explorers", "Explorers"]], func(v): _set_lbd_board(v))
+	lbd_seg = sg[1]
+	lbd_box.add_child(sg[0])
+	var hero := glass(Color(accent, 0.12), Color(accent, 0.4), 14.0)
+	hero.pad(16, 12, 16, 12)
+	var hrow := hbox(12)
+	var hcol := vbox(2)
+	hcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hcol.alignment = BoxContainer.ALIGNMENT_CENTER
+	hcol.add_child(eyebrow("Your rank"))
+	lbd_hero_sub = L("Not ranked yet", "body", 500, 12, DIM)
+	lbd_hero_sub.clip_text = true
+	lbd_hero_sub.custom_minimum_size = Vector2(1, 0)
+	hcol.add_child(lbd_hero_sub)
+	hrow.add_child(hcol)
+	lbd_hero_val = L("", "mono", 700, 18, FG)
+	lbd_hero_val.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hrow.add_child(lbd_hero_val)
+	lbd_hero_rank = L("\u2014", "display", 800, 40, accent, true, 0.0)
+	lbd_hero_rank.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hrow.add_child(lbd_hero_rank)
+	hero.add_child(hrow)
+	lbd_box.add_child(hero)
+	lbd_scroll = ScrollContainer.new()
+	lbd_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	lbd_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	lbd_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbd_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	lbd_box.add_child(lbd_scroll)
+	lbd_list = vbox(2)
+	lbd_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbd_scroll.add_child(lbd_list)
+	set_seg(lbd_seg, lbd_board)
+
+
+func show_leaderboards_dialog() -> void:
+	if lbd_modal == null:
+		return
+	lbd_board = "global"
+	set_seg(lbd_seg, lbd_board)
+	_render_lbd()
+	lbd_modal.visible = true
+	_set_stick_direction(Vector2i.ZERO)
+	game.net.fetch_leaderboards()
+	relayout()
+	_rise(lbd_modal.get_child(0))
+	(lbd_modal.get_meta("close") as Control).grab_focus()
+
+
+func hide_leaderboards() -> void:
+	if lbd_modal == null or not lbd_modal.visible:
+		return
+	lbd_modal.visible = false
+	_set_stick_direction(Vector2i.ZERO)
+	var focus := _focus_owner()
+	if focus and lbd_modal.is_ancestor_of(focus):
+		focus.release_focus()
+	_active_section = ""
+	_sync_tab_styles()
+	if menu_on:
+		_focus_nav("leaderboards")
+
+
+func render_leaderboards_data(data) -> void:
+	_lbd_data = data
+	if lbd_modal and lbd_modal.visible:
+		_render_lbd()
+
+
+func _set_lbd_board(b: String) -> void:
+	lbd_board = b
+	set_seg(lbd_seg, b)
+	_render_lbd()
+
+
+func _fmt_board_value(board: String, v: float) -> String:
+	if board == "explorers":
+		var n := int(round(v))
+		return "%d track%s" % [n, "" if n == 1 else "s"]
+	return _fmt_pp(v) + " PP"
+
+
+func _render_lbd() -> void:
+	if lbd_list == null:
+		return
+	for c in lbd_list.get_children():
+		c.queue_free()
+		lbd_list.remove_child(c)
+	var d = _lbd_data
+	if not (d is Dictionary) or d.get("error", false):
+		lbd_hero_rank.text = "\u2014"
+		lbd_hero_rank.add_theme_color_override("font_color", DIM)
+		lbd_hero_val.text = ""
+		lbd_hero_sub.text = "Connect to see global standings"
+		var m := L("Sign in and race to join the global leaderboards.", "body", 400, 12, DIM)
+		m.custom_minimum_size = Vector2(0, 30)
+		lbd_list.add_child(m)
+		return
+	var board = d.get(lbd_board, {})
+	if not (board is Dictionary):
+		board = {}
+	var me = board.get("me")
+	if me is Dictionary and int(me.get("rank", 0)) > 0:
+		lbd_hero_rank.text = "#%d" % int(me.rank)
+		lbd_hero_rank.add_theme_color_override("font_color", accent)
+		lbd_hero_val.text = _fmt_board_value(lbd_board, float(me.get("value", 0.0)))
+		lbd_hero_sub.text = "Your rank"
+	else:
+		lbd_hero_rank.text = "\u2014"
+		lbd_hero_rank.add_theme_color_override("font_color", DIM)
+		lbd_hero_val.text = ""
+		lbd_hero_sub.text = "Race to get ranked"
+	var top = board.get("top", [])
+	if not (top is Array) or top.is_empty():
+		var m2 := L("No one has ranked yet \u2014 be the first.", "body", 400, 12, DIM)
+		m2.custom_minimum_size = Vector2(0, 30)
+		lbd_list.add_child(m2)
+		return
+	var my_rank := int(me.get("rank", -1)) if me is Dictionary else -1
+	for t in top:
+		if not (t is Dictionary):
+			continue
+		var rk := int(t.get("rank", 0))
+		lbd_list.add_child(_lbd_row(rk, str(t.get("name", "racer")), float(t.get("value", 0.0)), rk == my_rank))
+
+
+func _lbd_row(rank: int, name: String, value: float, me: bool) -> Control:
+	var row := glass(Color(accent, 0.12) if me else Color(0, 0, 0, 0), Color(0, 0, 0, 0), 8.0)
+	row.custom_minimum_size = Vector2(0, 34)
+	row.pad(8, 0, 10, 0)
+	var h := hbox(10)
+	var rk := L("#%d" % rank, "mono", 700, 13, accent if me else DIM)
+	rk.custom_minimum_size = Vector2(44, 0)
+	rk.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	h.add_child(rk)
+	var nm := L(name, "body", 600, 13, FG if me else FG, false, 0.04, true)
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nm.clip_text = true
+	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	nm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	h.add_child(nm)
+	var vl := L(_fmt_board_value(lbd_board, value), "mono", 700, 13, accent if me else FG)
+	vl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	h.add_child(vl)
+	row.add_child(h)
+	return row
+
+
+func _layout_leaderboards_dialog(W: float, H: float, sl: float, sr: float, st: float, sb: float) -> void:
+	if lbd_modal == null or not lbd_modal.visible:
+		return
+	var card: Glass = lbd_modal.get_child(0)
+	var cw := minf(820.0, W - sl - sr - 16.0)
+	var ch := minf(880.0, H - st - sb - 16.0)
+	lbd_box.custom_minimum_size.x = cw - 44.0
+	card.size = Vector2(cw, ch)
+	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - ch) / 2.0))
 	card._sync()
 
 func _build_overlays() -> void:
@@ -2737,6 +3111,8 @@ func relayout() -> void:
 	_layout_leaderboard(W, H, sl, sr, st, sb)
 	_layout_track_action(W, H, sl, sr, st, sb)
 	_layout_options(W, H, sl, sr, st, sb)
+	_layout_section(W, H, sl, sr, st, sb)
+	_layout_leaderboards_dialog(W, H, sl, sr, st, sb)
 	for m in [pause_modal, finish_modal]:
 		var card: Glass = m.get_child(0)
 		var cw := minf(420.0, W - sl - sr)
@@ -3427,7 +3803,7 @@ func render_favs() -> void:
 		var tile := _track_tile(str(f.seed), str(f.get("env", "")), str(f.name), true)
 		fav_list.add_child(tile.cell)
 		fav_preview_views.append(tile.view)
-	if game.menu_tab == "tracks":
+	if _section_key == "tracks" and section_modal != null and section_modal.visible:
 		call_deferred("_populate_fav_previews")
 
 
@@ -3450,18 +3826,18 @@ func render_recent_tracks() -> void:
 		var tile := _track_tile(seed_s, str(entry.get("env", "")), str(entry.get("name", seed_s)), false)
 		recent_track_list.add_child(tile.cell)
 		recent_preview_views.append(tile.view)
-	if game.menu_tab == "tracks":
+	if _section_key == "tracks" and section_modal != null and section_modal.visible:
 		call_deferred("_populate_fav_previews")
 
 
 func _populate_fav_previews() -> void:
-	if fav_preview_task_running or game.menu_tab != "tracks":
+	if fav_preview_task_running or _section_key != "tracks" or section_modal == null or not section_modal.visible:
 		return
 	fav_preview_task_running = true
 	var revision := fav_preview_revision
 	var previews: Array = fav_preview_views + recent_preview_views
 	for entry in previews:
-		if revision != fav_preview_revision or game.menu_tab != "tracks":
+		if revision != fav_preview_revision or _section_key != "tracks" or not section_modal.visible:
 			break
 		var preview := entry.map as MapView
 		if not is_instance_valid(preview) or preview.t != null:
@@ -3470,7 +3846,7 @@ func _populate_fav_previews() -> void:
 		preview.set_track(track, entry.accent)
 		await get_tree().process_frame
 	fav_preview_task_running = false
-	if game.menu_tab == "tracks" and revision != fav_preview_revision:
+	if _section_key == "tracks" and section_modal.visible and revision != fav_preview_revision:
 		call_deferred("_populate_fav_previews")
 
 
@@ -3495,7 +3871,8 @@ func _cached_fav_track(seed: String, env_key: String) -> TrackData:
 
 func _sync_tab_styles() -> void:
 	for b in tabs:
-		var on: bool = b.get_meta("v") == game.menu_tab
+		var key: String = b.get_meta("v")
+		var on: bool = (key == _active_section) if _active_section != "" else (key == game.menu_tab)
 		# active tab reads as a glowing accent pill; inactive stays a quiet slot
 		b.inset = 4.0 if on else 0.0
 		b.glow = 11.0 if on else 0.0
@@ -3504,29 +3881,21 @@ func _sync_tab_styles() -> void:
 		(b.get_meta("lbl") as Label).add_theme_color_override("font_color", FG if on else DIM)
 
 
+## Only the two in-scene sheet modes land here now: drive (the landing track overview) and garage.
 func set_tab(t: String) -> void:
 	_sync_tab_styles()
 	if section_title:
-		section_title.text = {"drive": "PLAY", "events": "EVENTS", "garage": "GARAGE", "tracks": "TRACKS", "options": "OPTIONS"}.get(t, t.to_upper())
-	if t == "events" and events_note:
-		events_note.visible = not game.net.is_online()
-		events_note.text = ("Connect to compete in the daily and weekly seed challenges." if not game.net.is_online()
-			else "Loading today's challenges…")
-		game.fetch_events()
+		section_title.text = {"drive": "PLAY", "garage": "GARAGE"}.get(t, t.to_upper())
 	for k in panes:
 		panes[k].visible = k == t
 	tab_scroll.scroll_vertical = 0
 	if btn_play:
 		btn_play.visible = t == "drive"
 	relayout()
-	if t == "tracks":
-		call_deferred("_populate_fav_previews")
-		if menu_on:
-			call_deferred("_focus_tracks_entry")
 
 
 func _focus_tracks_entry() -> void:
-	if not menu_on or game.menu_tab != "tracks":
+	if not menu_on or _section_key != "tracks" or not section_modal.visible:
 		return
 	var target: Control = null
 	if fav_list.get_child_count() > 0:
@@ -3587,7 +3956,7 @@ func _process(_dt: float) -> void:
 			if absf(b.custom_minimum_size.y - b.size.x) > 0.5:
 				b.custom_minimum_size.y = b.size.x
 	# live countdowns on the event cards
-	if menu_on and not event_cards.is_empty() and panes.has("events") and panes["events"].visible:
+	if menu_on and not event_cards.is_empty() and section_modal != null and section_modal.visible and _section_key == "events":
 		var server_now := _events_now + float(Time.get_ticks_msec() - _events_t0) / 1000.0
 		for kind in event_cards:
 			var c: Dictionary = event_cards[kind]

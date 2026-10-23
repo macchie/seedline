@@ -9,6 +9,7 @@ signal track_info_ready(seed: String, env: String, info: Dictionary)
 signal run_submitted(seed: String, env: String, info: Dictionary)
 signal pp_updated(pp: Dictionary)
 signal pp_ready(data: Dictionary)
+signal leaderboards_ready(data: Dictionary)
 signal account_changed
 signal car_pulled(car: Dictionary)
 signal events_ready(data: Dictionary)
@@ -242,6 +243,18 @@ func fetch_pp() -> void:
 func _apply_pp(pp: Dictionary) -> void:
 	global_pp = float(pp.get("global_pp", global_pp))
 	pp_updated.emit(pp)
+
+
+## Global player leaderboards (skill by PP, exploration by unique tracks played).
+func fetch_leaderboards() -> void:
+	if not is_online():
+		leaderboards_ready.emit({"error": true})
+		return
+	var r: Dictionary = await call_rpc("seedline_leaderboards", {})
+	if r.ok and r.data is Dictionary:
+		leaderboards_ready.emit(r.data)
+	else:
+		leaderboards_ready.emit({"error": true})
 
 
 func submit_run(seed: String, env: String, time_s: float, length_m: float, splits: Array, laps: int, ghost: Array = []) -> void:

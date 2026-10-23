@@ -676,11 +676,14 @@ local function ensure_event_boards()
   end
 end
 
--- One authoritative, descending board for the global PP rating (score = round(PP * 100)).
+-- Authoritative descending boards: the global PP rating (score = round(PP * 100)) and the explorer
+-- rating (score = number of unique seed tracks a player has raced at least once).
 local function ensure_global_board()
-  local ok, err = pcall(nk.leaderboard_create, "global_pp", true, "desc", "set", nil, { kind = "global_pp" })
-  if not ok and not (type(err) == "string" and err:find("exist", 1, true)) then
-    nk.logger_warn("global_pp board: " .. tostring(err))
+  for _, def in ipairs({ { "global_pp", "global_pp" }, { "tracks_explored", "tracks_explored" } }) do
+    local ok, err = pcall(nk.leaderboard_create, def[1], true, "desc", "set", nil, { kind = def[2] })
+    if not ok and not (type(err) == "string" and err:find("exist", 1, true)) then
+      nk.logger_warn(def[1] .. " board: " .. tostring(err))
+    end
   end
 end
 
@@ -765,12 +768,18 @@ end
 -- Recompute a player's global PP from their per-track bests and push it to the global_pp board.
 -- track PP for the tracks they aren't actively racing can drift as others join; it refreshes the
 -- next time they set a time there. The just-scored track is always recomputed against fresh stats.
-local function update_player_pp(uid, run, stats_doc)
+local function update_player_pp(uid, run, stats_doc, new_player)
   local track_pp, z, n = pp_for_time(stats_doc, run.time_ms)
   local global = 0.0
+  local explored = 0
   update_doc("profile", "pp", uid, PERM_NONE, function(doc)
-    doc = doc or { tracks = {}, global = 0.0 }
+    doc = doc or { tracks = {}, global = 0.0, explored = 0 }
     doc.tracks = doc.tracks or {}
+    doc.explored = doc.explored or 0
+    -- a first-ever play of a seed (authoritative via track_played) grows the explorer count
+    if new_player then
+      doc.explored = doc.explored + 1
+    end
     doc.tracks[run.lb_id] = { pp = track_pp, t = run.time_ms, seed = run.seed, env = run.env }
     local arr = {}
     for id, e in pairs(doc.tracks) do
@@ -791,9 +800,13 @@ local function update_player_pp(uid, run, stats_doc)
     end
     doc.global = g
     global = g
+    explored = doc.explored
     return doc
   end)
   pcall(nk.leaderboard_record_write, "global_pp", uid, "", round(global * PP.score_scale), 0, { pp = global })
+  if new_player then
+    pcall(nk.leaderboard_record_write, "tracks_explored", uid, "", explored, 0, { tracks = explored })
+  end
   return { track_pp = track_pp, global_pp = global, z = z, players = n, improved = true }
 end
 
@@ -894,7 +907,7 @@ local function rpc_submit_run(context, payload)
     count_profile(info)
     -- A run only changes a player's PP when it is a new personal best; a slower run is informational.
     if mark.improved then
-      local pp_ok, res = pcall(update_player_pp, uid, run, stats_doc)
+      local pp_ok, res = pcall(update_player_pp, uid, run, stats_doc, mark.new_player)
       if pp_ok then
         pp_result = res
       else
@@ -984,6 +997,28 @@ local function rpc_pp(context, _payload)
   })
 end
 
+--- Global player leaderboards for the Leaderboards screen: skill (global PP) and exploration
+--- (unique seed tracks played). Each returns the top N plus the caller's own rank and value.
+local function rpc_leaderboards(context, _payload)
+  local uid = require_user(context)
+  local function board(id, scale)
+    local s = board_standings(id, uid, CFG.top_limit)
+    local top = {}
+    for _, t in ipairs(s.top) do
+      top[#top + 1] = { rank = t.rank, name = t.name, value = (t.time_ms or 0) / scale }
+    end
+    local me = nil
+    if s.me ~= nil then
+      me = { rank = s.me.rank, value = (s.me.time_ms or 0) / scale }
+    end
+    return { top = top, me = me }
+  end
+  return nk.json_encode({
+    global = board("global_pp", PP.score_scale),
+    explorers = board("tracks_explored", 1),
+  })
+end
+
 --- Garage settings follow the account. Last write wins; the server clock orders the revisions.
 local CAR_FINISHES = { gloss = true, metal = true, matte = true }
 
@@ -1043,5 +1078,6 @@ nk.register_rpc(rpc_get_car, "seedline_get_car")
 nk.register_rpc(rpc_save_car, "seedline_save_car")
 nk.register_rpc(rpc_events, "seedline_events")
 nk.register_rpc(rpc_pp, "seedline_pp")
+nk.register_rpc(rpc_leaderboards, "seedline_leaderboards")
 
 nk.logger_info("Seedline module loaded")

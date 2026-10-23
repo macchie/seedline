@@ -124,6 +124,7 @@ func _ready() -> void:
 	net.run_submitted.connect(_on_run_submitted)
 	net.pp_updated.connect(_on_pp_updated)
 	net.pp_ready.connect(func(d): ui.render_pp(d))
+	net.leaderboards_ready.connect(func(d): ui.render_leaderboards_data(d))
 	net.account_changed.connect(_on_account_changed)
 	net.car_pulled.connect(_on_car_pulled)
 	net.events_ready.connect(func(d): ui.render_events(d))
