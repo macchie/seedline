@@ -132,14 +132,20 @@ var acct_submit_lbl: Label
 var acct_signout: Tap
 var acct_who: Label
 var acct_mail_lbl: Label
+var progression_lbl: Label
 var acct_opt_status: Label
 var acct_opt_btn: Tap
 var acct_opt_lbl: Label
 var net_status_lbl: Label
 var f_rank: Label
+var f_rival: Label
+var f_event: Label
 var f_pp: Label
 var pp_stat: Label           # global PP shown on the account screen
+var season_stat: Label
 var _global_pp := 0.0
+var lb_chase_btn: Tap
+var lb_chase_label: Label
 var swatch_box: GridContainer
 var swatches: Array = []
 var boost_swatch_box: GridContainer
@@ -1857,6 +1863,12 @@ func _build_modals() -> void:
 	f_rank = L("", "body", 600, 12, accent, false, 0.12, true)
 	f_rank.visible = false
 	fbox.add_child(f_rank)
+	f_rival = L("", "body", 600, 11, accent, false, 0.08, true)
+	f_rival.visible = false
+	fbox.add_child(f_rival)
+	f_event = L("", "body", 600, 11, accent, false, 0.08, true)
+	f_event.visible = false
+	fbox.add_child(f_event)
 	f_pp = L("", "mono", 700, 13, FG, false, 0.02)
 	f_pp.visible = false
 	fbox.add_child(f_pp)
@@ -1940,9 +1952,17 @@ func _build_account_modal() -> void:
 	pp_col.add_child(L("Global rating", "body", 600, 10, DIM, false, 0.16, true))
 	pp_stat = L("0 PP", "display", 800, 22, accent, true, 0.02, true)
 	pp_col.add_child(pp_stat)
+	season_stat = L("SEASON · 0 PP", "body", 600, 10, DIM, false, 0.08, true)
+	pp_col.add_child(season_stat)
 	pp_row.add_child(pp_col)
 	pp_card.add_child(pp_row)
 	acct_box.add_child(pp_card)
+	acct_box.add_child(eyebrow("Achievement record"))
+	progression_lbl = L("Connect to sync milestones and seasonal standing.", "body", 500, 11, DIM)
+	progression_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	progression_lbl.custom_minimum_size = Vector2(120, 0)
+	progression_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	acct_box.add_child(progression_lbl)
 	# signed out
 	acct_form = vbox(10)
 	var sg := seg([["signin", "Sign in"], ["register", "Create account"]], func(v): _set_acct_mode(v))
@@ -3510,8 +3530,39 @@ func render_leaderboard(info) -> void:
 		l.custom_minimum_size = Vector2(0, 30)
 		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		lb_box.add_child(l)
+	_sync_rival_button()
 	if lb_modal and lb_modal.visible:
 		relayout()
+
+
+func _sync_rival_button() -> void:
+	if lb_chase_btn == null:
+		return
+	var ghosts: Variant = _lb_info.get("ghosts", []) if _lb_info is Dictionary else []
+	var available: bool = ghosts is Array and not ghosts.is_empty()
+	lb_chase_btn.visible = available
+	if not available:
+		return
+	var target_name: String = game.rival_ghost_fleet.target_name()
+	lb_chase_label.text = "CHASE: " + (target_name if target_name != "" else "FASTEST GHOST")
+
+
+func _cycle_rival() -> void:
+	var ghosts: Variant = _lb_info.get("ghosts", []) if _lb_info is Dictionary else []
+	if not ghosts is Array or ghosts.is_empty():
+		return
+	var ids: Array[String] = []
+	for ghost in ghosts:
+		if ghost is Dictionary:
+			var user_id := str(ghost.get("user_id", ""))
+			if user_id != "":
+				ids.append(user_id)
+	if ids.is_empty():
+		return
+	var current: String = game.rival_ghost_fleet.target_user_id()
+	var index := ids.find(current)
+	game.pin_rival(ids[(index + 1) % ids.size()])
+	_sync_rival_button()
 
 
 ## Compact leaderboard state shown on the track-card button and the dialog hero (your rank, big).
@@ -3620,6 +3671,12 @@ func _build_leaderboard_modal() -> void:
 	hrow.add_child(lb_hero_rank)
 	lb_hero.add_child(hrow)
 	lb_dialog_box.add_child(lb_hero)
+	var chase := _cbtn("Chase fastest ghost", false)
+	lb_chase_btn = chase[0]
+	lb_chase_label = chase[1]
+	lb_chase_btn.visible = false
+	lb_chase_btn.pressed.connect(_cycle_rival)
+	lb_dialog_box.add_child(lb_chase_btn)
 	lb_stats = L("", "body", 600, 10, DIM, false, 0.12, true)
 	lb_dialog_box.add_child(lb_stats)
 	lb_dialog_scroll = ScrollContainer.new()
@@ -3754,13 +3811,16 @@ func set_finish_pp(pp) -> void:
 		return
 	var track_pp := int(round(float(pp.get("track_pp", 0.0))))
 	set_global_pp(float(pp.get("global_pp", _global_pp)))
-	var txt := "%d PP" % track_pp
+	var season = pp.get("season", {})
+	var season_total := int(round(float(season.get("global_pp", 0.0)))) if season is Dictionary else 0
+	var txt := "%d PP · SEASON %d" % [track_pp, season_total]
 	if bool(pp.get("improved", false)):
 		txt += "  ·  BEST"
-	txt += "   ⟶   %s GLOBAL PP" % _fmt_pp(_global_pp)
 	f_pp.text = txt
 	f_pp.add_theme_color_override("font_color", accent if track_pp > 0 else DIM)
 	f_pp.visible = true
+	if season is Dictionary:
+		_set_season_stat(season)
 
 
 func set_global_pp(v: float) -> void:
@@ -3775,6 +3835,67 @@ func render_pp(data: Dictionary) -> void:
 	if pp_stat:
 		var rank := int(data.get("rank", 0))
 		pp_stat.text = ("%s PP · WORLD #%d" % [_fmt_pp(_global_pp), rank]) if rank > 0 else ("%s PP" % _fmt_pp(_global_pp))
+	var season = data.get("season", {})
+	if season is Dictionary:
+		_set_season_stat(season)
+
+
+func _set_season_stat(season: Dictionary) -> void:
+	if season_stat == null:
+		return
+	var rank := int(season.get("rank", 0))
+	var standing := " · WORLD #%d" % rank if rank > 0 else ""
+	season_stat.text = "SEASON %s · %s PP%s" % [str(season.get("period", "")), _fmt_pp(float(season.get("global_pp", 0.0))), standing]
+
+
+func render_progression(data: Dictionary) -> void:
+	if progression_lbl == null or data.get("error", false):
+		return
+	var titles := {
+		"first_finish": "First Finish",
+		"explorer_10": "Track Explorer · 10",
+		"explorer_50": "Track Explorer · 50",
+		"environment_tour": "Environment Tour",
+		"event_first": "Challenge Debut",
+		"event_regular": "Event Regular",
+		"event_podium": "Event Podium",
+	}
+	var unlocked = data.get("achievements", data.get("unlocked", {}))
+	if not unlocked is Dictionary:
+		unlocked = {}
+	var lines := ["%d RACES · %d TRACKS · %d EVENT ENTRIES" % [int(data.get("runs", 0)), int(data.get("tracks", 0)), int(data.get("event_count", 0))]]
+	for achievement_id in titles:
+		lines.append(("UNLOCKED  " if unlocked.has(achievement_id) else "LOCKED      ") + titles[achievement_id])
+	progression_lbl.text = "\n".join(lines)
+	var fresh = data.get("new_achievements", [])
+	if fresh is Array and not fresh.is_empty():
+		var achievement_id := str(fresh[0])
+		toast("Badge unlocked: " + str(titles.get(achievement_id, achievement_id)))
+
+
+func set_finish_events(events: Array) -> void:
+	if f_event == null or events.is_empty():
+		return
+	var results: Array[String] = []
+	for event in events:
+		if event is Dictionary:
+			var rank := int(event.get("rank", 0))
+			results.append("%s%s" % [str(event.get("title", "SEED CHALLENGE")).to_upper(), " #%d" % rank if rank > 0 else ""])
+	if results.is_empty():
+		return
+	f_event.text = "EVENT COMPLETE · " + " · ".join(results)
+	f_event.visible = true
+
+
+func set_finish_rival(name: String, rival_time: float, player_time: float) -> void:
+	if f_rival == null:
+		return
+	if name == "" or rival_time <= 0.0:
+		f_rival.visible = false
+		return
+	var gap := rival_time - player_time
+	f_rival.text = "%s %.2f S" % [("BEAT " + name.to_upper() + " BY") if gap >= 0.0 else ("CHASE " + name.to_upper() + " BY"), absf(gap)]
+	f_rival.visible = true
 
 
 func _fmt_pp(v: float) -> String:
@@ -4266,6 +4387,8 @@ func show_finish(track_txt: String, t: float, medal, delta_txt: String, delta_co
 	f_delta.text = delta_txt
 	f_delta.add_theme_color_override("font_color", delta_col)
 	f_pp.visible = false
+	f_rival.visible = false
+	f_event.visible = false
 	render_personal_best(f_best, pb)
 	sync_icons()
 	finish_modal.visible = true

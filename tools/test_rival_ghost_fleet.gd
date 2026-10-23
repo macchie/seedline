@@ -38,6 +38,23 @@ func _run_tests() -> void:
 	assert(fleet._runs[0].time_ms == 100)
 	assert(fleet._runs[9].time_ms == 1000)
 	assert(is_equal_approx(fleet._models[9].material_override.get_shader_parameter("opacity"), 0.0))
+	fleet.set_ghosts([
+		{"user_id": "rival-fast", "name": "Apex", "time_ms": 200, "path": [0, 0, 0, 10, 0, 1000]},
+		{"user_id": "rival-next", "name": "Nova", "time_ms": 250, "path": [0, 0, 0, 10, 0, 1000]},
+	])
+	assert(fleet.target_user_id() == "rival-fast")
+	assert(fleet.target_name() == "Apex")
+	assert(is_equal_approx(fleet.target_time(), 0.2))
+	fleet.set_target("rival-next")
+	assert(fleet.target_user_id() == "rival-next")
+	assert(fleet.target_name() == "Nova")
+	assert(is_equal_approx(fleet.target_time(), 0.25))
+	assert(is_equal_approx(fleet._models[1].material_override.get_shader_parameter("opacity"), 0.58))
+	fleet.set_ghosts([
+		{"user_id": "replacement", "name": "Rook", "time_ms": 300, "path": [0, 0, 0, 10, 0, 1000]},
+	])
+	assert(fleet.target_user_id() == "replacement")
+	assert(fleet.target_name() == "Rook")
 	fleet.set_ghosts({})
 	assert(fleet._runs.is_empty())
 	assert(not fleet.visible)

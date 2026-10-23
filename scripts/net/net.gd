@@ -7,8 +7,10 @@ signal status_changed(text: String)
 signal online_changed(count: int)
 signal track_info_ready(seed: String, env: String, info: Dictionary)
 signal run_submitted(seed: String, env: String, info: Dictionary)
-signal pp_updated(pp: Dictionary)
+signal pp_updated(seed: String, pp: Dictionary)
 signal pp_ready(data: Dictionary)
+signal progression_changed(data: Dictionary)
+signal event_progressed(seed: String, events: Array)
 signal leaderboards_ready(data: Dictionary)
 signal account_changed
 signal car_pulled(car: Dictionary)
@@ -36,6 +38,9 @@ var display_name := ""
 var email := ""
 var global_pp := 0.0
 var pp_rank := 0
+var season_pp := 0.0
+var season_rank := 0
+var season_period := ""
 
 var _token := ""
 var _refresh := ""
@@ -236,13 +241,31 @@ func fetch_pp() -> void:
 	if r.ok and r.data is Dictionary:
 		global_pp = float(r.data.get("global_pp", global_pp))
 		pp_rank = int(r.data.get("rank", pp_rank))
+		var season = r.data.get("season", {})
+		if season is Dictionary:
+			season_pp = float(season.get("global_pp", season_pp))
+			season_rank = int(season.get("rank", season_rank))
+			season_period = str(season.get("period", season_period))
 		pp_ready.emit(r.data)
 
 
+func fetch_progression() -> void:
+	if not is_online():
+		return
+	var r: Dictionary = await call_rpc("seedline_progression", {})
+	if r.ok and r.data is Dictionary:
+		progression_changed.emit(r.data)
+
+
 ## Fold a submit_run PP result into the cached global rating and notify listeners.
-func _apply_pp(pp: Dictionary) -> void:
+func _apply_pp(track_seed: String, pp: Dictionary) -> void:
 	global_pp = float(pp.get("global_pp", global_pp))
-	pp_updated.emit(pp)
+	var season = pp.get("season", {})
+	if season is Dictionary:
+		season_pp = float(season.get("global_pp", season_pp))
+		season_rank = int(season.get("rank", season_rank))
+		season_period = str(season.get("period", season_period))
+	pp_updated.emit(track_seed, pp)
 
 
 ## Global player leaderboards (skill by PP, exploration by unique tracks played).
@@ -297,7 +320,13 @@ func flush_queue() -> void:
 			q.pop_front()
 			Store.set_value(QUEUE_KEY, q)
 			if r.data is Dictionary and r.data.get("pp") is Dictionary:
-				_apply_pp(r.data.pp)
+				_apply_pp(str(entry.get("seed", "")), r.data.pp)
+			if r.data is Dictionary and r.data.get("progression") is Dictionary:
+				var progression: Dictionary = r.data.progression
+				progression_changed.emit(progression)
+				var events = progression.get("events", [])
+				if events is Array and not events.is_empty():
+					event_progressed.emit(str(entry.get("seed", "")), events)
 			if r.data is Dictionary and r.data.get("info") is Dictionary:
 				run_submitted.emit(entry.seed, entry.env, r.data.info)
 			continue

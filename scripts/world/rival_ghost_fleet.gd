@@ -9,6 +9,7 @@ const MAX_OPACITY := 0.6
 
 var _runs: Array[Dictionary] = []
 var _models: Array[MeshInstance3D] = []
+var _target_user_id := ""
 
 
 func _init() -> void:
@@ -41,18 +42,66 @@ func set_ghosts(ghosts: Variant) -> void:
 		var path: Variant = item.get("path", [])
 		if not path is Array or path.size() < 6 or path.size() % 3 != 0 or path.size() / 3 > MAX_POINTS:
 			continue
-		_runs.append({"time_ms": int(item.get("time_ms", 0)), "path": path, "track_index": 0})
+		_runs.append({
+			"user_id": str(item.get("user_id", "")),
+			"name": str(item.get("name", "racer")),
+			"time_ms": int(item.get("time_ms", 0)),
+			"path": path,
+			"track_index": 0,
+		})
 	_runs.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.time_ms < b.time_ms)
 	if _runs.size() > MAX_GHOSTS:
 		_runs.resize(MAX_GHOSTS)
 	for i in MAX_GHOSTS:
 		var model := _models[i]
 		model.visible = i < _runs.size()
-		var opacity := MAX_OPACITY
-		if _runs.size() > 1:
-			opacity = lerpf(MAX_OPACITY, 0.0, float(i) / float(_runs.size() - 1))
-		model.material_override.set_shader_parameter("opacity", opacity if i < _runs.size() else 0.0)
 	visible = not _runs.is_empty()
+	if not _runs.is_empty():
+		set_target(_target_user_id)
+	else:
+		_apply_appearance()
+
+
+func set_target(user_id: String) -> void:
+	_target_user_id = ""
+	for run in _runs:
+		if user_id != "" and str(run.user_id) == user_id:
+			_target_user_id = user_id
+			break
+	if _target_user_id == "" and not _runs.is_empty():
+		_target_user_id = str(_runs[0].user_id)
+	_apply_appearance()
+
+
+func target_user_id() -> String:
+	return _target_user_id
+
+
+func target_name() -> String:
+	for run in _runs:
+		if str(run.user_id) == _target_user_id and _target_user_id != "":
+			return str(run.name)
+	return ""
+
+
+func target_time() -> float:
+	for run in _runs:
+		if str(run.user_id) == _target_user_id and _target_user_id != "":
+			return float(run.time_ms) / 1000.0
+	return 0.0
+
+
+func _apply_appearance() -> void:
+	for i in MAX_GHOSTS:
+		var is_target := i < _runs.size() and _target_user_id != "" and str(_runs[i].user_id) == _target_user_id
+		var opacity := MAX_OPACITY
+		if _target_user_id != "":
+			opacity = 0.58 if is_target else 0.1
+		elif _runs.size() > 1 and i < _runs.size():
+			opacity = lerpf(MAX_OPACITY, 0.0, float(i) / float(_runs.size() - 1))
+		var material: ShaderMaterial = _models[i].material_override
+		material.set_shader_parameter("opacity", opacity if i < _runs.size() else 0.0)
+		material.set_shader_parameter("tint", Vector3(1.0, 0.75, 0.3) if is_target else Vector3(0.48, 0.86, 1.0))
 
 
 func update_at(time_s: float, track: TrackData) -> void:
@@ -146,9 +195,9 @@ shader_type spatial;
 render_mode unshaded, blend_mix, depth_draw_never;
 
 uniform float opacity : hint_range(0.0, 0.6) = 0.0;
+uniform vec3 tint = vec3(0.48, 0.86, 1.0);
 
 void fragment() {
-	vec3 tint = vec3(0.48, 0.86, 1.0);
 	ALBEDO = tint;
 	EMISSION = tint * 0.45;
 	ALPHA = opacity;

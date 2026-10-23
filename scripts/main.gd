@@ -47,6 +47,7 @@ var splits: Array = []
 var net: Net
 var run_info = null
 var last_pp = null
+var last_events: Array = []
 var ghost_rec: Array = []
 var server_ghost_rec: Array = []
 var server_ghost_complete := true
@@ -124,6 +125,8 @@ func _ready() -> void:
 	net.run_submitted.connect(_on_run_submitted)
 	net.pp_updated.connect(_on_pp_updated)
 	net.pp_ready.connect(func(d): ui.render_pp(d))
+	net.progression_changed.connect(func(d): ui.render_progression(d))
+	net.event_progressed.connect(_on_event_progressed)
 	net.leaderboards_ready.connect(func(d): ui.render_leaderboards_data(d))
 	net.account_changed.connect(_on_account_changed)
 	net.car_pulled.connect(_on_car_pulled)
@@ -852,6 +855,8 @@ func to_menu() -> void:
 func finish_race(t: float) -> void:
 	state = "finished"
 	finish_t = t
+	last_pp = null
+	last_events.clear()
 	sfx.beep(990, 0.12, "triangle", 0.25)
 	get_tree().create_timer(0.12).timeout.connect(func(): sfx.beep(1480, 0.3, "triangle", 0.22))
 	var prev_best = best.t if best != null else null
@@ -882,7 +887,12 @@ func finish_race(t: float) -> void:
 			dtxt = ("New best " if is_pb else "") + U.fmt_delta(t - prev_best)
 			dcol = Ui.FAST if t < prev_best else Ui.SLOW
 		ui.show_finish(track.name + " · " + track.seed, t, m, dtxt, dcol, minf(t, prev_best if prev_best != null else t))
-		ui.set_finish_rank(run_info))
+		ui.set_finish_rank(run_info)
+		ui.set_finish_rival(rival_ghost_fleet.target_name(), rival_ghost_fleet.target_time(), t)
+		if last_pp is Dictionary:
+			ui.set_finish_pp(last_pp)
+		if not last_events.is_empty():
+			ui.set_finish_events(last_events))
 
 
 # ================================================================== online (Nakama)
@@ -908,12 +918,14 @@ func _on_net_status(s: String) -> void:
 		fetch_leaderboard()
 		fetch_events()
 		net.fetch_pp()
+		net.fetch_progression()
 
 
 func _on_track_info(seed: String, env: String, info: Dictionary) -> void:
 	if track == null or seed != track.seed or env != track.env_key:
 		return
 	rival_ghost_fleet.set_ghosts(info.get("ghosts", []))
+	rival_ghost_fleet.set_target(str(Store.get_value("rival." + track.seed, "")))
 	ui.render_leaderboard(info)
 
 
@@ -925,14 +937,31 @@ func _on_run_submitted(seed: String, env: String, info: Dictionary) -> void:
 	ui.render_leaderboard(info)
 	if ui.finish_modal.visible:
 		ui.set_finish_rank(info)
+		ui.set_finish_rival(rival_ghost_fleet.target_name(), rival_ghost_fleet.target_time(), finish_t)
 
 
 ## A submitted run's PP result (track PP gained + new global total); update the HUD and finish card.
-func _on_pp_updated(pp: Dictionary) -> void:
-	last_pp = pp
+func _on_pp_updated(track_seed: String, pp: Dictionary) -> void:
 	ui.set_global_pp(net.global_pp)
-	if ui.finish_modal.visible:
+	if track != null and track_seed == track.seed:
+		last_pp = pp
+	if track != null and track_seed == track.seed and ui.finish_modal.visible:
 		ui.set_finish_pp(pp)
+
+
+func _on_event_progressed(track_seed: String, events: Array) -> void:
+	if track != null and track_seed == track.seed:
+		last_events = events
+		if ui.finish_modal.visible:
+			ui.set_finish_events(events)
+	fetch_events()
+
+
+func pin_rival(user_id: String) -> void:
+	if track == null or user_id == "":
+		return
+	Store.set_value("rival." + track.seed, user_id)
+	rival_ghost_fleet.set_target(user_id)
 
 
 # ================================================================== menu actions (bound from the UI)

@@ -60,6 +60,12 @@ local PP = {
   keep = 200,          -- most-valuable tracks retained per player for the global total
   score_scale = 100.0, -- the global_pp leaderboard stores round(global_pp * 100) as an integer score
 }
+local SEASON = {
+  reset = "0 0 1 * *", -- monthly, UTC
+  decay = PP.decay,
+  keep = PP.keep,
+  score_scale = PP.score_scale,
+}
 
 local SYSTEM = "00000000-0000-0000-0000-000000000000"
 local PERM_NONE, PERM_PUBLIC = 0, 2
@@ -519,7 +525,12 @@ local function track_info(lb_id, uid)
         end
         local doc = paths[r.owner_id]
         if doc ~= nil and doc.time_ms == r.score and type(doc.path) == "table" then
-          result.ghosts[#result.ghosts + 1] = { time_ms = r.score, path = doc.path }
+          result.ghosts[#result.ghosts + 1] = {
+            user_id = r.owner_id,
+            name = names[r.owner_id] or r.username or "racer",
+            time_ms = r.score,
+            path = doc.path,
+          }
         end
       end
     end
@@ -659,12 +670,83 @@ end
 
 --- Mirror a just-accepted run into any event board whose featured seed it matches.
 local function record_event_runs(uid, username, run)
+  local matched = {}
   for kind, _ in pairs(EVENTS) do
     local period = event_period(kind)
     if run.seed == event_seed(kind, period) then
       pcall(nk.leaderboard_record_write, kind, uid, username, run.time_ms, 0, { v = run.version })
+      local standings = board_standings(kind, uid, CFG.top_limit)
+      matched[#matched + 1] = {
+        kind = kind,
+        title = EVENTS[kind].title,
+        seed = run.seed,
+        period = period,
+        rank = standings.me and standings.me.rank or 0,
+        time_ms = run.time_ms,
+      }
     end
   end
+  return matched
+end
+
+local function grant_achievement(uid, id)
+  local _, _, unlocked = update_doc("progression", "achievements", uid, PERM_NONE, function(doc)
+    doc = doc or { unlocked = {} }
+    doc.unlocked = doc.unlocked or {}
+    if doc.unlocked[id] ~= nil then
+      return doc, false
+    end
+    doc.unlocked[id] = now_s()
+    return doc, true
+  end)
+  return unlocked == true
+end
+
+local function record_progression(uid, run, new_track, matched_events)
+  local _, doc, result = update_doc("progression", "achievements", uid, PERM_NONE, function(current)
+    local p = current or { runs = 0, tracks = 0, environments = {}, event_periods = {}, event_count = 0, unlocked = {} }
+    p.runs = (p.runs or 0) + 1
+    p.tracks = (p.tracks or 0) + (new_track and 1 or 0)
+    p.environments = p.environments or {}
+    p.environments[run.env] = true
+    p.event_periods = p.event_periods or {}
+    p.event_count = p.event_count or 0
+    p.unlocked = p.unlocked or {}
+
+    local fresh, event_rewards = {}, {}
+    local function unlock(id)
+      if p.unlocked[id] == nil then
+        p.unlocked[id] = now_s()
+        fresh[#fresh + 1] = id
+      end
+    end
+    local environment_count = 0
+    for _ in pairs(p.environments) do environment_count = environment_count + 1 end
+    if p.runs >= 1 then unlock("first_finish") end
+    if p.tracks >= 10 then unlock("explorer_10") end
+    if p.tracks >= 50 then unlock("explorer_50") end
+    if environment_count >= 9 then unlock("environment_tour") end
+
+    for _, event in ipairs(matched_events or {}) do
+      if p.event_periods[event.kind] ~= event.period then
+        p.event_periods[event.kind] = event.period
+        p.event_count = p.event_count + 1
+        event_rewards[#event_rewards + 1] = event
+      end
+    end
+    if p.event_count >= 1 then unlock("event_first") end
+    if p.event_count >= 10 then unlock("event_regular") end
+    return p, { fresh = fresh, events = event_rewards }
+  end)
+  return {
+    unlocked = doc.unlocked or {},
+    new_achievements = result.fresh or {},
+    runs = doc.runs or 0,
+    tracks = doc.tracks or 0,
+    environments = doc.environments or {},
+    event_count = doc.event_count or 0,
+    events = result.events or {},
+  }
 end
 
 local function ensure_event_boards()
@@ -679,8 +761,12 @@ end
 -- Authoritative descending boards: the global PP rating (score = round(PP * 100)) and the explorer
 -- rating (score = number of unique seed tracks a player has raced at least once).
 local function ensure_global_board()
-  for _, def in ipairs({ { "global_pp", "global_pp" }, { "tracks_explored", "tracks_explored" } }) do
-    local ok, err = pcall(nk.leaderboard_create, def[1], true, "desc", "set", nil, { kind = def[2] })
+  for _, def in ipairs({
+    { "global_pp", "global_pp", nil },
+    { "tracks_explored", "tracks_explored", nil },
+    { "season_pp", "season_pp", SEASON.reset },
+  }) do
+    local ok, err = pcall(nk.leaderboard_create, def[1], true, "desc", "set", def[3], { kind = def[2] })
     if not ok and not (type(err) == "string" and err:find("exist", 1, true)) then
       nk.logger_warn(def[1] .. " board: " .. tostring(err))
     end
@@ -699,6 +785,7 @@ local function on_event_reset(_context, leaderboard, _reset)
   end
   local notifs = {}
   for _, r in ipairs(records) do
+    grant_achievement(r.owner_id, "event_podium")
     notifs[#notifs + 1] = {
       user_id = r.owner_id,
       subject = string.format("You finished #%d in the %s", r.rank, EVENTS[id].title),
@@ -810,6 +897,63 @@ local function update_player_pp(uid, run, stats_doc, new_player)
   return { track_pp = track_pp, global_pp = global, z = z, players = n, improved = true }
 end
 
+local function season_period()
+  return os.date("!%Y-%m", now_s())
+end
+
+local function update_season_pp(uid, run, track_pp)
+  local period = season_period()
+  local _, doc = update_doc("profile", "season_pp", uid, PERM_NONE, function(current)
+    local p = current
+    if p == nil or p.period ~= period then
+      p = { period = period, tracks = {} }
+    end
+    p.tracks = p.tracks or {}
+    local old = p.tracks[run.lb_id]
+    if old == nil or track_pp > (old.pp or 0.0) then
+      p.tracks[run.lb_id] = { pp = track_pp, seed = run.seed, env = run.env, t = run.time_ms }
+    end
+    local arr = {}
+    for id, entry in pairs(p.tracks) do
+      arr[#arr + 1] = { id = id, pp = entry.pp or 0.0 }
+    end
+    table.sort(arr, function(a, b) return a.pp > b.pp end)
+    local total, factor = 0.0, 1.0
+    for i = 1, math.min(#arr, SEASON.keep) do
+      total = total + arr[i].pp * factor
+      factor = factor * SEASON.decay
+    end
+    p.global = total
+    return p
+  end)
+  local score = doc.global or 0.0
+  pcall(nk.leaderboard_record_write, "season_pp", uid, "", round(score * SEASON.score_scale), 0, { pp = score, period = period })
+  local standings = board_standings("season_pp", uid, CFG.top_limit)
+  return {
+    period = period,
+    global_pp = score,
+    rank = standings.me and standings.me.rank or 0,
+    track_pp = track_pp,
+  }
+end
+
+local function progression_view(uid)
+  local doc = read_doc("progression", "achievements", uid) or {}
+  local season_doc = read_doc("profile", "season_pp", uid) or {}
+  local period = season_period()
+  if season_doc.period ~= period then
+    season_doc = { period = period, global = 0.0 }
+  end
+  return {
+    achievements = doc.unlocked or {},
+    runs = doc.runs or 0,
+    tracks = doc.tracks or 0,
+    environments = doc.environments or {},
+    event_count = doc.event_count or 0,
+    season = { period = period, global_pp = season_doc.global or 0.0 },
+  }
+end
+
 -- ----------------------------------------------------------------------------- RPCs
 
 local function rpc_hello(context, payload)
@@ -876,12 +1020,13 @@ local function rpc_submit_run(context, payload)
   end
 
   local pp_result = nil
+  local progression_result = nil
   local ok, err = pcall(function()
     ensure_leaderboard(run.lb_id, run.seed, run.env)
     local names = display_names({ uid })
     local username = names[uid] or context.username
     nk.leaderboard_record_write(run.lb_id, uid, username, run.time_ms, 0, { v = run.version })
-    record_event_runs(uid, username, run)
+    local matched_events = record_event_runs(uid, username, run)
     if run.ghost ~= nil then
       local ghost_ok, ghost_err = pcall(function()
         update_doc("track_ghosts", run.lb_id, uid, PERM_PUBLIC, function(doc)
@@ -900,6 +1045,12 @@ local function rpc_submit_run(context, payload)
       end
     end
     local mark, new_track, stats_doc = record_track_play(run, uid)
+    local progression_ok, progression = pcall(record_progression, uid, run, mark.new_player, matched_events)
+    if progression_ok then
+      progression_result = progression
+    else
+      nk.logger_warn("progression update failed: " .. tostring(progression))
+    end
     counter_add("runs_total", 1)
     if new_track then
       counter_add("tracks_total", 1)
@@ -918,6 +1069,14 @@ local function rpc_submit_run(context, payload)
       local pdoc = read_doc("profile", "pp", uid)
       pp_result = { track_pp = best_pp, global_pp = (pdoc and pdoc.global) or 0.0, z = z, players = n, improved = false }
     end
+    if pp_result ~= nil then
+      local season_ok, season = pcall(update_season_pp, uid, run, pp_result.track_pp)
+      if season_ok then
+        pp_result.season = season
+      else
+        nk.logger_warn("season PP update failed: " .. tostring(season))
+      end
+    end
   end)
   if not ok then
     -- undo the idempotency marker so the client's retry is processed again
@@ -929,7 +1088,7 @@ local function rpc_submit_run(context, payload)
     fail("could not record the run", E_INTERNAL)
   end
 
-  return nk.json_encode({ accepted = true, duplicate = false, pp = pp_result, info = track_info(run.lb_id, uid) })
+  return nk.json_encode({ accepted = true, duplicate = false, pp = pp_result, progression = progression_result, info = track_info(run.lb_id, uid) })
 end
 
 local function rpc_track_info(context, payload)
@@ -946,6 +1105,10 @@ local function rpc_events(context, _payload)
     weekly = event_view("weekly", uid),
     now = now_s(),
   })
+end
+
+local function rpc_progression(context, _payload)
+  return nk.json_encode(progression_view(require_user(context)))
 end
 
 local function rpc_overview(context, _payload)
@@ -988,12 +1151,20 @@ local function rpc_pp(context, _payload)
   for _, t in ipairs(standings.top) do
     players[#players + 1] = { rank = t.rank, name = t.name, global_pp = (t.time_ms or 0) / PP.score_scale }
   end
+  local season_doc = read_doc("profile", "season_pp", uid) or {}
+  local season_standings = board_standings("season_pp", uid, CFG.top_limit)
+  local season_me_rank = season_standings.me and season_standings.me.rank or 0
   return nk.json_encode({
     global_pp = doc.global or 0.0,
     rank = rank,
     tracks_scored = #arr,
     top = top,
     top_players = players,
+    season = {
+      period = season_period(),
+      global_pp = season_doc.period == season_period() and (season_doc.global or 0.0) or 0.0,
+      rank = season_me_rank,
+    },
   })
 end
 
@@ -1079,5 +1250,6 @@ nk.register_rpc(rpc_save_car, "seedline_save_car")
 nk.register_rpc(rpc_events, "seedline_events")
 nk.register_rpc(rpc_pp, "seedline_pp")
 nk.register_rpc(rpc_leaderboards, "seedline_leaderboards")
+nk.register_rpc(rpc_progression, "seedline_progression")
 
 nk.logger_info("Seedline module loaded")

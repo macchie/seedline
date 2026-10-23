@@ -13,7 +13,11 @@ generates a repeatable circuit. Race it, record a best, then share the seed and 
   best-run replays that replay the original inputs through normal physics and boost/pickup logic.
   Older runs without input recordings can be viewed as route previews.
 - **Ghost comparisons:** race alongside your own best and up to ten available opponents on the same
-  seed. Opponent ghosts are ordered fastest to slowest and fade from 0.6 opacity to 0.0.
+  seed. Pin and cycle through saved rival ghosts from the leaderboard, with a finish-time comparison
+  against your selected racer.
+- **Progression:** daily and weekly seed challenges award event participation and podium badges.
+  Account progression tracks race, exploration, and environment milestones, alongside monthly
+  seasonal PP standings.
 - **Garage and options:** customize car paint and booster color; adjust graphics and rebind keyboard
   and gamepad controls. Touch controls adapt for phones and tablets.
 - **Responsive interface:** Drive, Garage, Tracks (Saved and Last played), and Options are designed
@@ -36,10 +40,11 @@ make godot
 
 ## Online services with Nakama
 
-The Nakama Lua runtime and Postgres backend provide per-track leaderboards, track statistics,
-online presence, account-linked car settings, and stored opponent ghost paths. Runs are validated
-and idempotent; when the service is unavailable, the game remains playable offline and queues
-finished runs for retry.
+The Nakama Lua runtime and Postgres backend provide per-track and event leaderboards, global and
+monthly seasonal Performance Points, account progression and achievements, online presence,
+account-linked car settings, and stored opponent ghost paths. Runs are validated and idempotent;
+when the service is unavailable, the game remains playable offline and queues finished runs for
+retry.
 
 Ghost paths are recorded on newly submitted runs. Older leaderboard results without a stored path
 remain on the leaderboard but are not available as opponent ghosts. See
