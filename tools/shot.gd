@@ -58,8 +58,12 @@ func _process(delta: float) -> bool:
 			main.set_tab("tracks")
 		elif mode == "options":
 			main.set_tab("options")
+		elif mode == "events":
+			main.set_tab("events")
 		elif mode == "seed":
 			main.ui.show_seed_dialog(true)
+		elif mode == "account":
+			main.ui.show_account(true)
 		elif mode == "race" or mode == "finish" or mode == "pause":
 			main.start_race()
 	if mode in ["race", "finish", "pause"] and frame > 5 and args.has("drive"):

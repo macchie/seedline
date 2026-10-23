@@ -123,6 +123,7 @@ func _ready() -> void:
 	net.run_submitted.connect(_on_run_submitted)
 	net.account_changed.connect(_on_account_changed)
 	net.car_pulled.connect(_on_car_pulled)
+	net.events_ready.connect(func(d): ui.render_events(d))
 	ui.sync_account()
 	_on_net_status(net.status)
 	get_window().size_changed.connect(_on_resize)
@@ -901,6 +902,7 @@ func _on_net_status(s: String) -> void:
 	ui.set_net_status("Connected to the leaderboard server." if s == "online" else ("Offline. Runs are saved and uploaded later." if net.enabled else "Online features are disabled."))
 	if s == "online":
 		fetch_leaderboard()
+		fetch_events()
 
 
 func _on_track_info(seed: String, env: String, info: Dictionary) -> void:
@@ -1061,6 +1063,20 @@ func submit_seed(v: String) -> void:
 	ui.seed_in.text = ""
 	with_loading(func():
 		load_track(v)
+		ui.toast("Loaded " + track.name))
+
+
+func fetch_events() -> void:
+	net.fetch_events()
+
+
+## Load a daily/weekly challenge seed as the current track and jump to the Play section to launch it.
+func load_event_seed(seed: String) -> void:
+	if parse_seed(seed) == null:
+		return
+	with_loading(func():
+		load_track(seed)
+		set_tab("drive")
 		ui.toast("Loaded " + track.name))
 
 

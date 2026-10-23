@@ -22,8 +22,10 @@ The script copies the module into `/nakama/data/modules` of the container and re
 | `seedline_overview` | Global numbers: online, players, runs, sessions, tracks, active today. |
 | `seedline_get_car` | The account's saved car (paint color, finish, booster color) and its revision. |
 | `seedline_save_car` | Saves the car after validating its colors and finish; last write wins. |
+| `seedline_events` | The current daily and weekly seed challenges: featured seed, end time, top 10 and the caller's rank. |
 
 - **Leaderboards**: one per track, id `track:<ENV>:<SEED>`, authoritative (clients cannot write scores), ascending, `best` operator, score in milliseconds. Created on the first accepted run.
+- **Events** (daily / weekly seed challenges): two authoritative leaderboards `daily` and `weekly` with reset schedules (`0 0 * * *` and `0 0 * * 1`). The competed seed rotates each period and is derived deterministically on the server from the period index (over the client's 16-character seed alphabet), so it is the single source of truth — clients cannot forge "today's" board. An accepted run whose seed matches the current daily/weekly seed is mirrored onto that event board. A `register_leaderboard_reset` hook notifies the top three finishers when a period rolls over.
 - **Track statistics** (storage `track_stats`, public read): runs, unique players, best time, total time, first and last play.
 - **Race ghosts** (storage `track_ghosts`, public read): one validated best-run path per user and track. Paths are flattened integer `(x decimeters, z decimeters, heading milliradians)` triples sampled at 5 Hz. The server limits paths to 5,000 points and track info returns up to 10 matching paths for the fastest other players, scanning at most 100 leaderboard records. Older leaderboard entries without a saved path are skipped.
 - **Sessions** (storage `sessions`): one record per app launch with platform, version, start, last seen and duration. Active users come from a presence room (`seedline` chat channel) that the client joins over the WebSocket. Nakama's Lua runtime has no session end event, so duration is derived from the heartbeat.

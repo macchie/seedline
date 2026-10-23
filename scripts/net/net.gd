@@ -9,6 +9,7 @@ signal track_info_ready(seed: String, env: String, info: Dictionary)
 signal run_submitted(seed: String, env: String, info: Dictionary)
 signal account_changed
 signal car_pulled(car: Dictionary)
+signal events_ready(data: Dictionary)
 signal _auth_finished
 
 const QUEUE_KEY := "net_queue"
@@ -47,6 +48,7 @@ var _connecting := false
 var _heartbeat: Timer
 var _seed_re := RegEx.new()
 var _info_serial := 0
+var _events_serial := 0
 var _car_timer: Timer
 var _car_serial := 0
 var _car_busy := false
@@ -204,6 +206,21 @@ func fetch_track_info(seed: String, env: String) -> void:
 		track_info_ready.emit(seed, env, r.data)
 	else:
 		track_info_ready.emit(seed, env, {"error": true})
+
+
+## The current daily and weekly seed challenges (featured seed, end time, top times, the caller's rank).
+func fetch_events() -> void:
+	if not is_online():
+		return
+	_events_serial += 1
+	var serial := _events_serial
+	var r: Dictionary = await call_rpc("seedline_events", {})
+	if serial != _events_serial:
+		return
+	if r.ok and r.data is Dictionary:
+		events_ready.emit(r.data)
+	else:
+		events_ready.emit({"error": true})
 
 
 func submit_run(seed: String, env: String, time_s: float, length_m: float, splits: Array, laps: int, ghost: Array = []) -> void:

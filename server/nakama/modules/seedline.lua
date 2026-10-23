@@ -438,6 +438,158 @@ local function ensure_leaderboard(lb_id, seed, env)
   end
 end
 
+-- ----------------------------------------------------------------------------- events (daily / weekly seeds)
+-- Rotating authoritative leaderboards whose featured seed changes every period. The server is the
+-- single source of truth for the seed: it derives it deterministically from the period index, so
+-- every client races the same course and no one can forge "today's" board.
+
+local EVENTS = {
+  daily  = { cron = "0 0 * * *",  title = "Daily Seed",  window = 86400 },
+  weekly = { cron = "0 0 * * 1",  title = "Weekly Seed", window = 604800 },
+}
+-- the client's shareable seed alphabet (scripts/core/u.gd CODE) — no I/L/O/0/1
+local SEED_CODE = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+local EPOCH_MONDAY = 345600 -- 1970-01-05 00:00 UTC, the first Monday after the epoch
+
+local function event_period(kind)
+  local now = now_s()
+  if kind == "weekly" then
+    local p = math.floor((now - EPOCH_MONDAY) / EVENTS.weekly.window)
+    return p, EPOCH_MONDAY + (p + 1) * EVENTS.weekly.window
+  end
+  local p = math.floor(now / EVENTS.daily.window)
+  return p, (p + 1) * EVENTS.daily.window
+end
+
+-- Deterministic 16-char seed for a period. Lua 5.1 (gopher-lua) has no bitwise ops, so this uses
+-- multiply/mod arithmetic kept well under 2^53 to stay exact: a rolling hash seeds a small LCG.
+local function event_seed(kind, period)
+  local key = kind .. "|" .. tostring(period) .. "|seedline-v1"
+  local h = 2166136261
+  for i = 1, #key do
+    h = (h * 31 + key:byte(i)) % 4294967296
+  end
+  local n = #SEED_CODE
+  local out = {}
+  for i = 1, 16 do
+    h = (h * 1664525 + 1013904223) % 4294967296
+    local idx = (math.floor(h / 65536) % n) + 1
+    out[i] = SEED_CODE:sub(idx, idx)
+  end
+  return table.concat(out)
+end
+
+--- Top N and the caller's own rank for a named leaderboard (shared by events).
+local function board_standings(board_id, uid, limit)
+  local out = { top = {}, me = nil }
+  local ok, records, owner_records = pcall(nk.leaderboard_records_list, board_id, { uid }, limit)
+  if not ok then
+    return out
+  end
+  local ids, seen = {}, {}
+  for _, r in ipairs(records or {}) do
+    if not seen[r.owner_id] then
+      seen[r.owner_id] = true
+      ids[#ids + 1] = r.owner_id
+    end
+  end
+  if owner_records ~= nil and owner_records[1] ~= nil and not seen[owner_records[1].owner_id] then
+    ids[#ids + 1] = owner_records[1].owner_id
+  end
+  local names = display_names(ids)
+  for i, r in ipairs(records or {}) do
+    if i <= limit then
+      out.top[#out.top + 1] = {
+        rank = r.rank,
+        user_id = r.owner_id,
+        name = names[r.owner_id] or r.username or "racer",
+        time_ms = r.score,
+      }
+    end
+  end
+  if owner_records ~= nil and owner_records[1] ~= nil then
+    local r = owner_records[1]
+    local rank = r.rank
+    if rank == nil or rank < 1 then
+      local ok_h, hay = pcall(nk.leaderboard_records_haystack, board_id, uid, 1)
+      if ok_h and hay ~= nil then
+        for _, h in ipairs(hay) do
+          if h.owner_id == uid then
+            rank = h.rank
+          end
+        end
+      end
+    end
+    if rank == nil or rank < 1 then
+      -- the caller is already in the fetched top page; reuse that rank
+      for _, t in ipairs(out.top) do
+        if t.user_id == uid then
+          rank = t.rank
+        end
+      end
+    end
+    out.me = { rank = rank or 0, time_ms = r.score }
+  end
+  return out
+end
+
+local function event_view(kind, uid)
+  local period, ends_at = event_period(kind)
+  local standings = board_standings(kind, uid, CFG.top_limit)
+  return {
+    kind = kind,
+    title = EVENTS[kind].title,
+    seed = event_seed(kind, period),
+    ends_at = ends_at,
+    top = standings.top,
+    me = standings.me,
+  }
+end
+
+--- Mirror a just-accepted run into any event board whose featured seed it matches.
+local function record_event_runs(uid, username, run)
+  for kind, _ in pairs(EVENTS) do
+    local period = event_period(kind)
+    if run.seed == event_seed(kind, period) then
+      pcall(nk.leaderboard_record_write, kind, uid, username, run.time_ms, 0, { v = run.version })
+    end
+  end
+end
+
+local function ensure_event_boards()
+  for kind, def in pairs(EVENTS) do
+    local ok, err = pcall(nk.leaderboard_create, kind, true, "asc", "best", def.cron, { kind = "event", title = def.title })
+    if not ok and not (type(err) == "string" and err:find("exist", 1, true)) then
+      nk.logger_warn(string.format("event board %s: %s", kind, tostring(err)))
+    end
+  end
+end
+
+--- When an event period rolls over, tell the top finishers how they placed.
+local function on_event_reset(_context, leaderboard, _reset)
+  local id = leaderboard ~= nil and leaderboard.id or nil
+  if id == nil or EVENTS[id] == nil then
+    return
+  end
+  local ok, records = pcall(nk.leaderboard_records_list, id, nil, 3)
+  if not ok or records == nil then
+    return
+  end
+  local notifs = {}
+  for _, r in ipairs(records) do
+    notifs[#notifs + 1] = {
+      user_id = r.owner_id,
+      subject = string.format("You finished #%d in the %s", r.rank, EVENTS[id].title),
+      content = { event = id, rank = r.rank, time_ms = r.score },
+      code = 100,
+      persistent = true,
+    }
+  end
+  if #notifs > 0 then
+    pcall(nk.notifications_send, notifs)
+  end
+end
+
 local function record_track_play(run, uid)
   -- the first write of a (user, track) marker is what makes a unique player
   local _, _, new_player = update_doc("track_played", run.lb_id, uid, PERM_NONE, function(doc)
@@ -540,7 +692,9 @@ local function rpc_submit_run(context, payload)
   local ok, err = pcall(function()
     ensure_leaderboard(run.lb_id, run.seed, run.env)
     local names = display_names({ uid })
-    nk.leaderboard_record_write(run.lb_id, uid, names[uid] or context.username, run.time_ms, 0, { v = run.version })
+    local username = names[uid] or context.username
+    nk.leaderboard_record_write(run.lb_id, uid, username, run.time_ms, 0, { v = run.version })
+    record_event_runs(uid, username, run)
     if run.ghost ~= nil then
       local ghost_ok, ghost_err = pcall(function()
         update_doc("track_ghosts", run.lb_id, uid, PERM_PUBLIC, function(doc)
@@ -582,6 +736,16 @@ local function rpc_track_info(context, payload)
   local uid = require_user(context)
   local p = decode(payload)
   return nk.json_encode(track_info(track_id(p.seed, p.env), uid))
+end
+
+--- The current daily and weekly seed challenges: featured seed, end time, top times and the caller's rank.
+local function rpc_events(context, _payload)
+  local uid = require_user(context)
+  return nk.json_encode({
+    daily = event_view("daily", uid),
+    weekly = event_view("weekly", uid),
+    now = now_s(),
+  })
 end
 
 local function rpc_overview(context, _payload)
@@ -643,11 +807,15 @@ local function rpc_save_car(context, payload)
   return nk.json_encode({ rev = rev })
 end
 
+ensure_event_boards()
+pcall(nk.register_leaderboard_reset, on_event_reset)
+
 nk.register_rpc(rpc_hello, "seedline_hello")
 nk.register_rpc(rpc_submit_run, "seedline_submit_run")
 nk.register_rpc(rpc_track_info, "seedline_track_info")
 nk.register_rpc(rpc_overview, "seedline_overview")
 nk.register_rpc(rpc_get_car, "seedline_get_car")
 nk.register_rpc(rpc_save_car, "seedline_save_car")
+nk.register_rpc(rpc_events, "seedline_events")
 
 nk.logger_info("Seedline module loaded")
