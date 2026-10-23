@@ -70,6 +70,14 @@ func _draw() -> void:
 				draw_colored_polygon(tp, c)
 			tp.append(tp[0])
 			draw_polyline(tp, c, w, true)
+		"trophy":
+			draw_polyline(PackedVector2Array([Vector2(7.5, 4), Vector2(16.5, 4), Vector2(16, 9.5), Vector2(12, 13), Vector2(8, 9.5), Vector2(7.5, 4)]), c, w, true)
+			draw_arc(Vector2(7.5, 5.5), 2.4, deg_to_rad(60), deg_to_rad(250), 10, c, w, true)
+			draw_arc(Vector2(16.5, 5.5), 2.4, deg_to_rad(-70), deg_to_rad(120), 10, c, w, true)
+			draw_line(Vector2(12, 13), Vector2(12, 16.5), c, w, true)
+			draw_line(Vector2(8.5, 19.5), Vector2(15.5, 19.5), c, w, true)
+			draw_line(Vector2(9.8, 19.5), Vector2(11, 16.5), c, w, true)
+			draw_line(Vector2(14.2, 19.5), Vector2(13, 16.5), c, w, true)
 	draw_set_transform(Vector2.ZERO)
 
 

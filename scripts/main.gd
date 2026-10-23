@@ -986,6 +986,12 @@ func load_fav(seed: String, env_key: String) -> void:
 	set_tab("drive")
 
 
+## Load a saved/recent track and jump straight into racing it (used by the track-action dialog).
+func race_track(seed: String, env_key: String) -> void:
+	await with_loading(func(): load_track(seed, env_key))
+	start_race()
+
+
 func replay_track(seed: String, env_key: String) -> void:
 	await with_loading(func(): _start_track_replay(seed, env_key))
 

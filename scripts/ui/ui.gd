@@ -51,12 +51,19 @@ var tabs: Array = []
 var panes := {}
 var tab_scroll: ScrollContainer
 var seed_in: LineEdit
-var lb_box: VBoxContainer
-var lb_group: VBoxContainer
-var lb_panel: Glass
-var lb_panel_box: VBoxContainer
-var lb_panel_title: Label
-var lb_split := false
+# current-track leaderboard: a summary button in the track card that opens a full dialog
+var lb_card_btn: Tap
+var lb_card_sum: Label
+var lb_modal: Control
+var lb_dialog_box: VBoxContainer
+var lb_dialog_scroll: ScrollContainer
+var lb_box: VBoxContainer          # the list of rank rows, inside the dialog
+var lb_stats: Label                # runs / racers, inside the dialog
+var lb_hero_rank: Label
+var lb_hero_time: Label
+var lb_hero_sub: Label
+var lb_hero: Glass
+var _lb_info = null
 var act_row: HBoxContainer
 var seed_row: HBoxContainer
 var th_row: HBoxContainer
@@ -68,20 +75,20 @@ var nav_menu: Control
 var section_title: Label
 var btn_rand: Tap
 var panes_box: VBoxContainer
-var lb_eyebrow: Label
-var lb_stats: Label
-# bottom toolbar (player card + status)
+# track-card best time + medal (moved out of the bottom toolbar)
+var card_best_lbl: Label
+var card_best_dot: Dot
+# bottom toolbar (player card + online status only)
 var bottombar: Glass
 var bar_box: Control
 var btn_card: Tap
 var pc_avatar: Icon
 var pc_name: Label
 var pc_status: Label
-var pc_now: Label
-var pc_best: Label
 var pc_online: Label
 # events (daily / weekly seed challenges)
 var events_note: Label
+var events_grid: GridContainer
 var event_cards := {}
 var _events_now := 0.0
 var _events_t0 := 0
@@ -135,10 +142,20 @@ var swatches: Array = []
 var boost_swatch_box: GridContainer
 var boost_swatches: Array = []
 var finish_seg: Array = []
-var fav_list: VBoxContainer
+var fav_list: GridContainer
 var fav_empty: Label
-var recent_track_list: VBoxContainer
+var recent_track_list: GridContainer
 var recent_track_empty: Label
+var track_action_modal: Control
+var track_action_box: VBoxContainer
+var track_action_preview: MapView
+var track_action_title: Label
+var track_action_sub: Label
+var track_action_race: Tap
+var track_action_watch: Tap
+var track_action_remove: Tap
+var _track_action_seed := ""
+var _track_action_env := ""
 var fav_track_cache := {}
 var fav_track_cache_order: Array[String] = []
 var fav_preview_views: Array[Dictionary] = []
@@ -148,6 +165,10 @@ var fav_preview_task_running := false
 const FAV_TRACK_CACHE_LIMIT := 32
 var sens_slider: HSlider
 var sens_out: Label
+# options content lives in options_body; it is reparented into options_modal when opened in-game
+var options_body: VBoxContainer
+var options_modal: Control
+var options_scroll: ScrollContainer
 var opt_segs := {}
 var pad_boost: Tap
 var bind_dev := "kb"
@@ -415,7 +436,13 @@ func focus_default() -> void:
 	if color_popup and color_popup.visible:
 		return
 	if modal_open():
-		if debug_modal.visible:
+		if options_modal.visible:
+			sens_slider.grab_focus()
+		elif track_action_modal.visible:
+			track_action_race.grab_focus()
+		elif lb_modal.visible:
+			(lb_modal.get_meta("close") as Control).grab_focus()
+		elif debug_modal.visible:
 			debug_reroll.grab_focus()
 		elif seed_modal.visible:
 			seed_in.grab_focus()
@@ -618,19 +645,6 @@ func _build_menu() -> void:
 	mtop.add_child(btn_debug)
 	_build_nav()
 	_build_bottombar()
-	# leaderboard side panel (kept hidden in the new shell; rankings live inside the Play section)
-	lb_panel = glass(Color(11 / 255.0, 14 / 255.0, 20 / 255.0, 0.78), LINE, 18.0, 3.5)
-	lb_panel.fill_bot = Color(9 / 255.0, 11 / 255.0, 16 / 255.0, 0.96)
-	lb_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	lb_panel.clip_contents = true
-	lb_panel.pad(18, 16, 18, 16)
-	lb_panel.visible = false
-	lb_panel_box = vbox(10)
-	lb_panel_title = L("Track leaderboard", "display", 800, 22, FG, true, 0.04, true)
-	lb_panel_box.add_child(lb_panel_title)
-	lb_panel_box.add_child(L("Fastest online times on this exact seed.", "body", 400, 12, DIM))
-	lb_panel.add_child(lb_panel_box)
-	mtop.add_child(lb_panel)
 	# sheet
 	sheet = glass(Color(11 / 255.0, 14 / 255.0, 20 / 255.0, 0.78), LINE, 20.0, 3.5)
 	sheet.fill_bot = Color(9 / 255.0, 11 / 255.0, 16 / 255.0, 0.96)
@@ -833,17 +847,7 @@ func _build_bottombar() -> void:
 	btn_card.add_child(crow)
 	btn_card.pressed.connect(func(): show_account(true))
 	bar_box.add_child(btn_card)
-	# now-racing chip (track name + seed)
-	pc_now = L("", "body", 600, 12, FG, false, 0.04, true)
-	pc_now.clip_text = true
-	pc_now.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	pc_now.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	bar_box.add_child(pc_now)
-	# personal best on the current track
-	pc_best = L("BEST —", "mono", 700, 13, accent, false, 0.02)
-	pc_best.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	bar_box.add_child(pc_best)
-	# online presence count
+	# online presence count (right side)
 	pc_online = L("● OFFLINE", "body", 600, 10, DIM, false, 0.14, true)
 	pc_online.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	bar_box.add_child(pc_online)
@@ -859,6 +863,54 @@ func _pane(parent: Control, key: String) -> VBoxContainer:
 
 func _build_track_pane(parent: Control) -> void:
 	var p := _pane(parent, "drive")
+	# track-card summary: personal best on the left, a leaderboard button on the right
+	var stat_row := hbox(8)
+	var best_chip := glass(PANEL2, LINE, 12.0)
+	best_chip.custom_minimum_size = Vector2(0, 50)
+	best_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	best_chip.pad(12, 0, 12, 0)
+	var best_in := hbox(8)
+	card_best_dot = dot(MEDAL_COL["gold"], 9)
+	card_best_dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	card_best_dot.visible = false
+	best_in.add_child(card_best_dot)
+	var best_col := vbox(1)
+	best_col.alignment = BoxContainer.ALIGNMENT_CENTER
+	best_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	best_col.add_child(L("YOUR BEST", "body", 600, 9, DIM, false, 0.14, true))
+	card_best_lbl = L("NOT RACED YET", "mono", 700, 14, DIM, false, 0.02)
+	card_best_lbl.clip_text = true
+	card_best_lbl.custom_minimum_size = Vector2(1, 0)
+	best_col.add_child(card_best_lbl)
+	best_in.add_child(best_col)
+	best_chip.add_child(best_in)
+	stat_row.add_child(best_chip)
+	lb_card_btn = tap(PANEL2, LINE, 12.0)
+	lb_card_btn.custom_minimum_size = Vector2(0, 50)
+	lb_card_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lb_card_btn.pad(12, 0, 10, 0)
+	lb_card_btn.tooltip_text = "Open the full online leaderboard for this track."
+	var lbrow := hbox(8)
+	var lbicon := Icon.new("trophy", 18)
+	lbicon.color = accent
+	lbicon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	lbrow.add_child(lbicon)
+	var lbcol := vbox(1)
+	lbcol.alignment = BoxContainer.ALIGNMENT_CENTER
+	lbcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbcol.add_child(L("LEADERBOARD", "body", 700, 11, FG, false, 0.06, true))
+	lb_card_sum = L("—", "body", 500, 10, DIM, false, 0.04, true)
+	lb_card_sum.clip_text = true
+	lb_card_sum.custom_minimum_size = Vector2(1, 0)
+	lbcol.add_child(lb_card_sum)
+	lbrow.add_child(lbcol)
+	var lbchev := L("›", "display", 800, 20, DIM, true)
+	lbchev.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbrow.add_child(lbchev)
+	lb_card_btn.add_child(lbrow)
+	lb_card_btn.pressed.connect(func(): show_leaderboard(true))
+	stat_row.add_child(lb_card_btn)
+	p.add_child(stat_row)
 	p.add_child(eyebrow("Track code"))
 	seed_in = LineEdit.new()
 	seed_in.placeholder_text = "Paste a seed, e.g. A7K2M9Q4B6N8P3RX"
@@ -899,18 +951,6 @@ func _build_track_pane(parent: Control) -> void:
 	seed_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	seed_note.custom_minimum_size = Vector2(120, 0)
 	p.add_child(seed_note)
-	# Keep online rankings available on wide desktop layouts without crowding the Drive panel.
-	var lb_head := hbox(8)
-	lb_eyebrow = eyebrow("Leaderboard")
-	lb_eyebrow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lb_head.add_child(lb_eyebrow)
-	lb_stats = L("", "body", 600, 10, DIM, false, 0.12, true)
-	lb_head.add_child(lb_stats)
-	lb_box = vbox(2)
-	lb_group = vbox(6)
-	lb_group.add_child(lb_head)
-	lb_group.add_child(lb_box)
-	p.add_child(lb_group)
 	render_leaderboard(null)
 
 
@@ -920,8 +960,14 @@ func _build_events_pane(parent: Control) -> void:
 	events_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	events_note.custom_minimum_size = Vector2(1, 0)
 	p.add_child(events_note)
-	_build_event_card(p, "daily", "Daily Seed", "A fresh seed every day. Set the fastest time before midnight UTC.")
-	_build_event_card(p, "weekly", "Weekly Seed", "One seed all week. Grind for the top of the board.")
+	events_grid = GridContainer.new()
+	events_grid.columns = 2
+	events_grid.add_theme_constant_override("h_separation", 10)
+	events_grid.add_theme_constant_override("v_separation", 10)
+	events_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	p.add_child(events_grid)
+	_build_event_card(events_grid, "daily", "Daily Seed", "A fresh seed every day. Set the fastest time before midnight UTC.")
+	_build_event_card(events_grid, "weekly", "Weekly Seed", "One seed all week. Grind for the top of the board.")
 
 
 ## One challenge card (daily or weekly): title + countdown, the featured seed, your rank, top times, Race.
@@ -929,6 +975,7 @@ func _build_event_card(parent: Control, kind: String, title: String, blurb: Stri
 	var card := glass(PANEL2, LINE, 14.0)
 	card.pad(14, 12, 14, 14)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.size_flags_vertical = Control.SIZE_FILL
 	var col := vbox(9)
 	card.add_child(col)
 	var head := hbox(8)
@@ -1164,19 +1211,227 @@ func _build_garage_pane(parent: Control) -> void:
 func _build_tracks_pane(parent: Control) -> void:
 	var p := _pane(parent, "tracks")
 	p.add_child(eyebrow("Saved tracks"))
-	fav_list = vbox(6)
+	fav_list = _track_grid()
 	p.add_child(fav_list)
 	fav_empty = L("No saved tracks yet. Save a track from Drive to keep it here.", "body", 400, 13, DIM)
 	fav_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	fav_empty.custom_minimum_size = Vector2(0, 36)
 	p.add_child(fav_empty)
 	p.add_child(eyebrow("Last played"))
-	recent_track_list = vbox(6)
+	recent_track_list = _track_grid()
 	p.add_child(recent_track_list)
 	recent_track_empty = L("Tracks you race or watch will appear here.", "body", 400, 13, DIM)
 	recent_track_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	recent_track_empty.custom_minimum_size = Vector2(0, 36)
 	p.add_child(recent_track_empty)
+
+
+func _track_grid() -> GridContainer:
+	var g := GridContainer.new()
+	g.columns = 3
+	g.add_theme_constant_override("h_separation", 8)
+	g.add_theme_constant_override("v_separation", 8)
+	g.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	g.mouse_filter = Control.MOUSE_FILTER_PASS
+	return g
+
+
+## One track tile (minimap + name + seed) for the saved / recent grids; tapping opens the action dialog.
+func _track_tile(seed_s: String, env_s: String, title: String, show_remove: bool) -> Dictionary:
+	if not Envs.DATA.has(env_s):
+		var parsed = game.parse_seed(seed_s)
+		if parsed != null:
+			env_s = str(parsed.env)
+	var acc := U.css(Envs.DATA[env_s].accent) if Envs.DATA.has(env_s) else accent
+	var cur: bool = game.track != null and seed_s == game.track.seed and env_s == game.track.env_key
+	var cell := tap(PANEL2, accent if cur else LINE, 12.0)
+	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cell.pad(8, 8, 8, 8)
+	cell.tooltip_text = "Open " + title
+	var col := vbox(6)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var pbox := glass(Color(0, 0, 0, 0.26), LINE, 9.0)
+	pbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pbox.pad(3, 3, 3, 3)
+	var preview := MapView.new()
+	preview.preview = true
+	preview.custom_minimum_size = Vector2(116, 116)
+	pbox.add_child(preview)
+	col.add_child(pbox)
+	var name_lbl := L(title, "display", 800, 13, FG, true, 0.0, true)
+	name_lbl.clip_text = true
+	name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_lbl.custom_minimum_size = Vector2(1, 0)
+	col.add_child(name_lbl)
+	var meta := hbox(5)
+	var bt = _best_time(seed_s)
+	if bt != null:
+		var seed_lbl := L("BEST " + U.fmt(bt), "mono", 500, 10, accent)
+		seed_lbl.clip_text = true
+		seed_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		meta.add_child(seed_lbl)
+	else:
+		var seed_lbl := L(seed_s, "mono", 500, 10, DIM)
+		seed_lbl.clip_text = true
+		seed_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		seed_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		meta.add_child(seed_lbl)
+	if _has_replay(seed_s):
+		var r := Icon.new("respawn", 13)
+		r.color = accent
+		r.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		r.tooltip_text = "Replay available"
+		meta.add_child(r)
+	col.add_child(meta)
+	cell.add_child(col)
+	var env_final := env_s
+	cell.pressed.connect(func(): show_track_action(seed_s, env_final, title, show_remove))
+	return {"cell": cell, "view": {"map": preview, "seed": seed_s, "env": env_final, "accent": acc}}
+
+
+func _best_time(seed_s: String):
+	var b = Store.get_value("best5." + seed_s, null)
+	return b.t if (b is Dictionary and b.has("t")) else null
+
+
+func _has_replay(seed_s: String) -> bool:
+	var b = Store.get_value("best5." + seed_s, null)
+	if not (b is Dictionary):
+		return false
+	var inputs = b.get("inputs", [])
+	var ghost = b.get("ghost", [])
+	return (inputs is Array and not inputs.is_empty()) or (ghost is Array and ghost.size() >= 6)
+
+
+func _build_track_action_modal() -> void:
+	track_action_modal = ColorRect.new()
+	(track_action_modal as ColorRect).color = Color(5 / 255.0, 6 / 255.0, 10 / 255.0, 0.72)
+	track_action_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	track_action_modal.mouse_filter = Control.MOUSE_FILTER_STOP
+	track_action_modal.visible = false
+	add_child(track_action_modal)
+	var card := glass(PANEL, LINE, 20.0, 3.0)
+	card.pad(22, 20, 22, 20)
+	card.clip_contents = true
+	track_action_modal.add_child(card)
+	track_action_box = vbox(12)
+	track_action_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_child(track_action_box)
+	var head := hbox(8)
+	var htext := vbox(2)
+	htext.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	htext.add_child(eyebrow("Track"))
+	track_action_title = L("Track", "display", 800, 24, FG, true, 0.0, true)
+	track_action_title.clip_text = true
+	track_action_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	track_action_title.custom_minimum_size = Vector2(1, 0)
+	htext.add_child(track_action_title)
+	head.add_child(htext)
+	var cb := icon_btn("x")
+	cb[0].size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cb[0].pressed.connect(func(): hide_track_action())
+	head.add_child(cb[0])
+	track_action_modal.set_meta("close", cb[0])
+	track_action_box.add_child(head)
+	var prow := hbox(12)
+	var pbox := glass(Color(0, 0, 0, 0.26), LINE, 10.0)
+	pbox.custom_minimum_size = Vector2(120, 120)
+	pbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pbox.pad(4, 4, 4, 4)
+	track_action_preview = MapView.new()
+	track_action_preview.preview = true
+	track_action_preview.custom_minimum_size = Vector2(112, 112)
+	pbox.add_child(track_action_preview)
+	prow.add_child(pbox)
+	var pcol := vbox(6)
+	pcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pcol.alignment = BoxContainer.ALIGNMENT_CENTER
+	track_action_sub = L("", "body", 500, 12, DIM)
+	track_action_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	track_action_sub.custom_minimum_size = Vector2(1, 0)
+	pcol.add_child(track_action_sub)
+	prow.add_child(pcol)
+	track_action_box.add_child(prow)
+	var race := _cbtn("Race this track", true, "A")
+	track_action_race = race[0]
+	race[0].pressed.connect(func(): _track_action_do("race"))
+	track_action_box.add_child(race[0])
+	var watch := _cbtn("Watch replay", false)
+	track_action_watch = watch[0]
+	watch[0].pressed.connect(func(): _track_action_do("watch"))
+	track_action_box.add_child(watch[0])
+	var remove := _cbtn("Remove from saved", false)
+	track_action_remove = remove[0]
+	remove[0].pressed.connect(func(): _track_action_do("remove"))
+	track_action_box.add_child(remove[0])
+	var close := _cbtn("Cancel", false, "Esc")
+	close[0].pressed.connect(func(): hide_track_action())
+	track_action_box.add_child(close[0])
+
+
+func show_track_action(seed_s: String, env_s: String, title: String, is_fav: bool) -> void:
+	if track_action_modal == null:
+		return
+	if not Envs.DATA.has(env_s):
+		var parsed = game.parse_seed(seed_s)
+		if parsed != null:
+			env_s = str(parsed.env)
+	_track_action_seed = seed_s
+	_track_action_env = env_s
+	track_action_title.text = title.to_upper()
+	var acc := U.css(Envs.DATA[env_s].accent) if Envs.DATA.has(env_s) else accent
+	var env_name := str(Envs.DATA[env_s].name) if Envs.DATA.has(env_s) else env_s
+	var bt = _best_time(seed_s)
+	var sub := env_name + "  \u00b7  " + seed_s
+	if bt != null:
+		sub += "\nYour best " + U.fmt(bt)
+	track_action_sub.text = sub
+	track_action_watch.visible = _has_replay(seed_s)
+	track_action_remove.visible = is_fav
+	track_action_preview.t = null
+	track_action_preview.set_track(_cached_fav_track(seed_s, env_s), acc)
+	track_action_modal.visible = true
+	_set_stick_direction(Vector2i.ZERO)
+	relayout()
+	_rise(track_action_modal.get_child(0))
+	track_action_race.grab_focus()
+
+
+func hide_track_action() -> void:
+	if track_action_modal == null or not track_action_modal.visible:
+		return
+	track_action_modal.visible = false
+	_set_stick_direction(Vector2i.ZERO)
+	var focus := _focus_owner()
+	if focus and track_action_modal.is_ancestor_of(focus):
+		focus.release_focus()
+	if menu_on and game.menu_tab == "tracks":
+		call_deferred("_focus_tracks_entry")
+
+
+func _track_action_do(kind: String) -> void:
+	var s := _track_action_seed
+	var e := _track_action_env
+	hide_track_action()
+	if kind == "race":
+		game.race_track(s, e)
+	elif kind == "watch":
+		game.replay_track(s, e)
+	elif kind == "remove":
+		game.remove_fav(s)
+
+
+func _layout_track_action(W: float, H: float, sl: float, sr: float, st: float, sb: float) -> void:
+	if track_action_modal == null:
+		return
+	var card: Glass = track_action_modal.get_child(0)
+	var cw := minf(420.0, W - sl - sr - 16.0)
+	track_action_box.custom_minimum_size.x = cw - 44.0
+	track_action_sub.custom_minimum_size.x = maxf(80.0, cw - 44.0 - 132.0)
+	card.size = Vector2(cw, 0)
+	card.size = Vector2(cw, minf(card.get_combined_minimum_size().y, H - st - sb - 16.0))
+	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - card.size.y) / 2.0))
+	card._sync()
 
 
 func _open_picker() -> void:
@@ -1196,7 +1451,10 @@ func _focus_color_picker() -> void:
 
 func _build_options_pane(parent: Control) -> void:
 	var p := _pane(parent, "options")
-	p.add_child(eyebrow("Visuals"))
+	options_body = vbox(12)
+	options_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	p.add_child(options_body)
+	options_body.add_child(eyebrow("Visuals"))
 	var o1 := vbox(6)
 	var head := hbox(0)
 	head.add_child(eyebrow("Touch steering · "))
@@ -1218,7 +1476,7 @@ func _build_options_pane(parent: Control) -> void:
 	rl.add_child(gl)
 	rl.add_child(L("Quick", "body", 600, 10, DIM, false, 0.12, true))
 	o1.add_child(rl)
-	p.add_child(o1)
+	options_body.add_child(o1)
 	for spec in [["side", "Steering hand", [["left", "Left thumb"], ["right", "Right thumb"]]], ["gfx", "Graphics", [["high", "Toon shading"], ["low", "Battery saver"]]],
 			["stats", "Frame rate readout", [["", "Hidden"], ["1", "Shown"]]]]:
 		var o := vbox(6)
@@ -1227,7 +1485,7 @@ func _build_options_pane(parent: Control) -> void:
 		var s := seg(spec[2], func(v): game.set_opt(k, v))
 		opt_segs[k] = s[1]
 		o.add_child(s[0])
-		p.add_child(o)
+		options_body.add_child(o)
 	var o2 := vbox(6)
 	o2.add_child(eyebrow("Controls"))
 	var ds := seg([["kb", "Keyboard"], ["pad", "Gamepad"]], func(v): _set_bind_device(v))
@@ -1273,7 +1531,7 @@ func _build_options_pane(parent: Control) -> void:
 	bind_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	bind_note.custom_minimum_size = Vector2(120, 0)
 	o2.add_child(bind_note)
-	p.add_child(o2)
+	options_body.add_child(o2)
 	_set_bind_device("kb")
 	var oa := vbox(6)
 	oa.add_child(eyebrow("Account"))
@@ -1286,11 +1544,11 @@ func _build_options_pane(parent: Control) -> void:
 	acct_opt_lbl = ob[1]
 	ob[0].pressed.connect(func(): show_account(true))
 	oa.add_child(ob[0])
-	p.add_child(oa)
+	options_body.add_child(oa)
 	net_status_lbl = L("", "body", 400, 12, DIM)
 	net_status_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	net_status_lbl.custom_minimum_size = Vector2(120, 0)
-	p.add_child(net_status_lbl)
+	options_body.add_child(net_status_lbl)
 
 
 func _style_slider(s: HSlider) -> void:
@@ -1511,11 +1769,14 @@ func _build_modals() -> void:
 	var row := hbox(8)
 	var r2 := _cbtn("Restart", false)
 	r2[0].pressed.connect(func(): game.restart(true))
+	var ropt := _cbtn("Options", false)
+	ropt[0].pressed.connect(func(): show_options(true))
+	row.add_child(r2[0])
+	row.add_child(ropt[0])
+	pg.add_child(row)
 	var r3 := _cbtn("Menu", false)
 	r3[0].pressed.connect(func(): game.to_menu())
-	row.add_child(r2[0])
-	row.add_child(r3[0])
-	pg.add_child(row)
+	pg.add_child(r3[0])
 	pbox.add_child(pg)
 	var fc := _card(self)
 	finish_modal = fc[0]
@@ -1566,6 +1827,9 @@ func _build_modals() -> void:
 	fbox.add_child(fg)
 	_build_account_modal()
 	_build_debug_modal()
+	_build_leaderboard_modal()
+	_build_track_action_modal()
+	_build_options_modal()
 
 
 func _field(placeholder: String, secret := false) -> LineEdit:
@@ -1817,6 +2081,12 @@ func modal_open() -> bool:
 
 
 func _active_dialog() -> Control:
+	if options_modal != null and options_modal.visible:
+		return options_modal
+	if track_action_modal != null and track_action_modal.visible:
+		return track_action_modal
+	if lb_modal != null and lb_modal.visible:
+		return lb_modal
 	if debug_modal != null and debug_modal.visible:
 		return debug_modal
 	if acct_modal != null and acct_modal.visible:
@@ -1827,7 +2097,13 @@ func _active_dialog() -> Control:
 
 
 func _close_dialog() -> void:
-	if debug_modal != null and debug_modal.visible:
+	if options_modal != null and options_modal.visible:
+		show_options(false)
+	elif track_action_modal != null and track_action_modal.visible:
+		hide_track_action()
+	elif lb_modal != null and lb_modal.visible:
+		show_leaderboard(false)
+	elif debug_modal != null and debug_modal.visible:
 		show_debug(false)
 	elif acct_modal != null and acct_modal.visible:
 		show_account(false)
@@ -2162,6 +2438,95 @@ func _layout_debug(W: float, H: float, sl: float, sr: float, st: float, sb: floa
 			mv.custom_minimum_size = Vector2(pw, pw)
 
 
+func _build_options_modal() -> void:
+	options_modal = ColorRect.new()
+	(options_modal as ColorRect).color = Color(5 / 255.0, 6 / 255.0, 10 / 255.0, 0.82)
+	options_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	options_modal.mouse_filter = Control.MOUSE_FILTER_STOP
+	options_modal.visible = false
+	add_child(options_modal)
+	var card := glass(PANEL, LINE, 20.0, 3.0)
+	card.pad(22, 16, 22, 16)
+	card.clip_contents = true
+	options_modal.add_child(card)
+	var box := vbox(12)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	card.add_child(box)
+	var head := hbox(8)
+	var htext := vbox(2)
+	htext.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	htext.add_child(eyebrow("Settings"))
+	htext.add_child(L("Options", "display", 800, 24, FG, true, 0.0, true))
+	head.add_child(htext)
+	var cb := icon_btn("x")
+	cb[0].size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cb[0].pressed.connect(func(): show_options(false))
+	head.add_child(cb[0])
+	options_modal.set_meta("close", cb[0])
+	box.add_child(head)
+	options_scroll = ScrollContainer.new()
+	options_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	options_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	options_scroll.follow_focus = true
+	options_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	options_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(options_scroll)
+
+
+func show_options(on: bool) -> void:
+	if options_modal == null or on == options_modal.visible:
+		return
+	if on:
+		if options_body.get_parent() != options_scroll:
+			options_body.get_parent().remove_child(options_body)
+			options_scroll.add_child(options_body)
+		sync_opts()
+		refresh_binds()
+		sync_account()
+		options_modal.visible = true
+		_set_stick_direction(Vector2i.ZERO)
+		relayout()
+		_rise(options_modal.get_child(0))
+		sens_slider.grab_focus()
+	else:
+		options_modal.visible = false
+		_set_stick_direction(Vector2i.ZERO)
+		var focus := _focus_owner()
+		if focus and options_modal.is_ancestor_of(focus):
+			focus.release_focus()
+		if options_body.get_parent() == options_scroll:
+			options_scroll.remove_child(options_body)
+			panes["options"].add_child(options_body)
+		if pause_modal.visible:
+			pause_resume.grab_focus()
+		elif menu_on:
+			focus_default()
+
+
+func _layout_options(W: float, H: float, sl: float, sr: float, st: float, sb: float) -> void:
+	if options_modal == null or not options_modal.visible:
+		return
+	var card: Glass = options_modal.get_child(0)
+	var cw := minf(460.0, W - sl - sr - 16.0)
+	var avail := H - st - sb - 16.0
+	options_body.custom_minimum_size.x = cw - 44.0
+	# size the keybind buttons for the modal width (overrides the menu-panel sizing)
+	var cwin := cw - 44.0 - 12.0
+	var blabel := 46.0 if cwin < 300.0 else (52.0 if cwin < 360.0 else 60.0)
+	var bbtn := clampf((cwin - blabel - 18.0) / 2.0, 72.0, 120.0)
+	for row in bind_rows.get_children():
+		row.add_theme_constant_override("separation", 6)
+		row.get_child(0).custom_minimum_size.x = blabel
+		for slot in 2:
+			(row.get_child(slot + 1) as Control).custom_minimum_size.x = bbtn
+	var content := options_body.get_combined_minimum_size().y
+	options_scroll.custom_minimum_size = Vector2(0, minf(content, maxf(160.0, avail - 72.0)))
+	card.size = Vector2(cw, 0)
+	card.size = Vector2(cw, minf(card.get_combined_minimum_size().y, avail))
+	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - card.size.y) / 2.0))
+	card._sync()
+
 func _build_overlays() -> void:
 	toast_box = glass(PANEL, LINE, 10.0, 2.5)
 	toast_box.pad(14, 8, 14, 8)
@@ -2231,9 +2596,6 @@ func relayout() -> void:
 	bottombar.size = Vector2(W - sl - sr, bar_h)
 	bottombar.radius = Vector4(16, 16, 16, 16)
 	bottombar.pad(0, 0, 0, 0)
-	var show_chips := W >= 560.0
-	pc_now.visible = show_chips
-	pc_best.visible = show_chips
 	_layout_bottombar(bottombar.size.x, bottombar.size.y)
 	# hero Race button (compact on short landscape screens so it never crowds the action row)
 	trackhead.visible = game.menu_tab == "drive"
@@ -2303,6 +2665,14 @@ func relayout() -> void:
 		trackhead.custom_minimum_size = Vector2.ZERO
 	# keybind button widths from the panel inner width
 	var content_w := head_iw - 12.0
+	# responsive grids inside the panel (events, saved tracks, recents)
+	if events_grid:
+		events_grid.columns = 2 if content_w >= 430.0 else 1
+	var tile_cols := clampi(int(content_w / 150.0), 1, 4)
+	if fav_list:
+		fav_list.columns = tile_cols
+	if recent_track_list:
+		recent_track_list.columns = tile_cols
 	var bind_label_w := 46.0 if W < 360.0 else (52.0 if W < 400.0 else 60.0)
 	var bind_gap := 4 if W < 360.0 else 6
 	var bind_button_w := clampf((content_w - bind_label_w - float(bind_gap * 3)) / 2.0, 72.0, 112.0)
@@ -2315,7 +2685,6 @@ func relayout() -> void:
 	sheet._sync()
 	if not menu_on:
 		_apply_menu_hidden()
-	_layout_lb_panel(W, H, st, sr, false, false)
 	# hud
 	top_l.position = Vector2(sl, st + 12.0)
 	mini_box.size = Vector2(112, 112)
@@ -2341,6 +2710,9 @@ func relayout() -> void:
 	_layout_account(W, H, sl, sr, st, sb)
 	_layout_seed_dialog(W, H, sl, sr, st, sb)
 	_layout_debug(W, H, sl, sr, st, sb)
+	_layout_leaderboard(W, H, sl, sr, st, sb)
+	_layout_track_action(W, H, sl, sr, st, sb)
+	_layout_options(W, H, sl, sr, st, sb)
 	for m in [pause_modal, finish_modal]:
 		var card: Glass = m.get_child(0)
 		var cw := minf(420.0, W - sl - sr)
@@ -2420,20 +2792,11 @@ func _layout_nav(vertical: bool, pos: Vector2, w: float, h: float) -> void:
 func _layout_bottombar(w: float, h: float) -> void:
 	var pad := 10.0
 	var cy := h / 2.0
-	var card_w := clampf(w * 0.42, 150.0, 240.0)
+	var card_w := clampf(w * 0.5, 160.0, 300.0)
 	btn_card.size = Vector2(card_w, h - 12.0)
 	btn_card.position = Vector2(pad, 6.0)
 	pc_online.size = pc_online.get_combined_minimum_size()
 	pc_online.position = Vector2(w - pad - pc_online.size.x, cy - pc_online.size.y / 2.0)
-	var right_x := pc_online.position.x
-	if pc_best.visible:
-		pc_best.size = pc_best.get_combined_minimum_size()
-		pc_best.position = Vector2(right_x - 16.0 - pc_best.size.x, cy - pc_best.size.y / 2.0)
-		right_x = pc_best.position.x
-	if pc_now.visible:
-		var now_x := btn_card.position.x + card_w + 16.0
-		pc_now.position = Vector2(now_x, cy - 8.0)
-		pc_now.size = Vector2(maxf(0.0, right_x - 16.0 - now_x), 16.0)
 
 
 ## The track head's height with the name wrapped at the width it will get (labels measure lazily)
@@ -2502,35 +2865,9 @@ func _sheet_content_height(inner_w: float) -> float:
 	return h + 10.0 * maxf(0.0, n - 1)
 
 
-## On wide desktop windows the leaderboard leaves the Track tab and lives in its own panel on the right.
+## Kept for the in-game camera offset; the leaderboard no longer has a persistent side panel.
 func right_panel_width() -> float:
-	return lb_panel.size.x + 16.0 if lb_panel.visible else 0.0
-
-
-func _layout_lb_panel(W: float, H: float, st: float, sr: float, wide: bool, show: bool) -> void:
-	var split: bool = wide
-	if split != lb_split:
-		lb_split = split
-		lb_group.get_parent().remove_child(lb_group)
-		if split:
-			lb_panel_box.add_child(lb_group)
-		else:
-			var tp: VBoxContainer = panes["drive"]
-			tp.add_child(lb_group)
-	lb_eyebrow.visible = not split
-	lb_stats.size_flags_horizontal = Control.SIZE_EXPAND_FILL if split else Control.SIZE_SHRINK_BEGIN
-	lb_panel.visible = show
-	if not show:
-		return
-	var w := clampf(W * 0.26, 300.0, 380.0)
-	var top := maxf(st + 92.0, btn_sound.position.y + btn_sound.size.y + 12.0)
-	lb_panel.position = Vector2(W - sr - w, top)
-	lb_panel_title.text = "Track leaderboard".to_upper()
-	var avail := H - top - 24.0
-	lb_panel.size = Vector2(w, w)
-	var need := lb_panel_box.get_combined_minimum_size().y + 32.0
-	lb_panel.size = Vector2(w, clampf(need, 160.0, avail))
-	lb_panel._sync()
+	return 0.0
 
 
 func _layout_pads(W: float, H: float, sl: float, sr: float, sb: float) -> void:
@@ -2734,12 +3071,15 @@ func render_personal_best(box: VBoxContainer, pb) -> void:
 
 ## info: null = nothing to show, {"loading": true}, {"error": true} or the server's track info.
 func render_leaderboard(info) -> void:
+	_lb_info = info
+	_update_lb_summary(info)
 	if lb_box == null:
 		return
 	for c in lb_box.get_children():
 		c.queue_free()
 		lb_box.remove_child(c)
-	lb_stats.text = ""
+	if lb_stats:
+		lb_stats.text = ""
 	var msg := ""
 	if info == null:
 		msg = "Online ranking is off for this track"
@@ -2750,7 +3090,8 @@ func render_leaderboard(info) -> void:
 	else:
 		var st: Dictionary = info.get("stats", {})
 		var runs := int(st.get("runs", 0))
-		lb_stats.text = ("%d RUNS · %d RACERS" % [runs, int(st.get("players", 0))])
+		if lb_stats:
+			lb_stats.text = ("%d RUNS · %d RACERS" % [runs, int(st.get("players", 0))])
 		var top = info.get("top", [])
 		if not (top is Array):
 			top = []
@@ -2769,8 +3110,140 @@ func render_leaderboard(info) -> void:
 		l.custom_minimum_size = Vector2(0, 30)
 		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		lb_box.add_child(l)
-	if game.track != null:
+	if lb_modal and lb_modal.visible:
 		relayout()
+
+
+## Compact leaderboard state shown on the track-card button and the dialog hero (your rank, big).
+func _update_lb_summary(info) -> void:
+	var sum_txt := "Tap to view online times"
+	var rank_txt := "—"
+	var time_txt := ""
+	var sub_txt := "Not raced yet"
+	if info == null:
+		sum_txt = "Offline for this track"
+	elif info is Dictionary and info.get("loading", false):
+		sum_txt = "Loading…"
+	elif info is Dictionary and info.get("error", false):
+		sum_txt = "Leaderboard offline"
+	elif info is Dictionary:
+		var st: Dictionary = info.get("stats", {})
+		var runs := int(st.get("runs", 0))
+		var players := int(st.get("players", 0))
+		var mine = info.get("me")
+		if mine is Dictionary and int(mine.get("rank", 0)) > 0:
+			var rk := int(mine.rank)
+			rank_txt = "#%d" % rk
+			time_txt = U.fmt(float(mine.get("time_ms", 0)) / 1000.0)
+			sub_txt = "of %d racers" % maxi(players, rk)
+			sum_txt = "You're #%d · %d racers" % [rk, players]
+		elif runs > 0:
+			sub_txt = "%d racers · not raced yet" % players
+			sum_txt = "%d runs · %d racers" % [runs, players]
+		else:
+			sub_txt = "Be the first to race"
+			sum_txt = "No times yet"
+	if lb_card_sum:
+		lb_card_sum.text = sum_txt.to_upper()
+	if lb_hero_rank:
+		lb_hero_rank.text = rank_txt
+		lb_hero_rank.add_theme_color_override("font_color", accent if rank_txt != "—" else DIM)
+		lb_hero_time.text = time_txt
+		lb_hero_sub.text = sub_txt
+
+
+func show_leaderboard(on: bool) -> void:
+	if lb_modal == null or on == lb_modal.visible:
+		return
+	lb_modal.visible = on
+	_set_stick_direction(Vector2i.ZERO)
+	if on:
+		render_leaderboard(_lb_info)
+		relayout()
+		_rise(lb_modal.get_child(0))
+		(lb_modal.get_meta("close") as Control).grab_focus()
+	else:
+		var focus := _focus_owner()
+		if focus and lb_modal.is_ancestor_of(focus):
+			focus.release_focus()
+		if menu_on:
+			lb_card_btn.grab_focus()
+
+
+func _build_leaderboard_modal() -> void:
+	lb_modal = ColorRect.new()
+	(lb_modal as ColorRect).color = Color(5 / 255.0, 6 / 255.0, 10 / 255.0, 0.72)
+	lb_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lb_modal.mouse_filter = Control.MOUSE_FILTER_STOP
+	lb_modal.visible = false
+	add_child(lb_modal)
+	var card := glass(PANEL, LINE, 20.0, 3.0)
+	card.pad(22, 20, 22, 20)
+	card.clip_contents = true
+	lb_modal.add_child(card)
+	lb_dialog_box = vbox(12)
+	lb_dialog_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lb_dialog_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	card.add_child(lb_dialog_box)
+	var head := hbox(8)
+	var htext := vbox(2)
+	htext.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	htext.add_child(eyebrow("Online ranking"))
+	htext.add_child(L("Track leaderboard", "display", 800, 24, FG, true, 0.0, true))
+	head.add_child(htext)
+	var cb := icon_btn("x")
+	cb[0].size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cb[0].pressed.connect(func(): show_leaderboard(false))
+	head.add_child(cb[0])
+	lb_modal.set_meta("close", cb[0])
+	lb_dialog_box.add_child(head)
+	# hero: your position, shown big
+	lb_hero = glass(Color(accent, 0.12), Color(accent, 0.4), 14.0)
+	lb_hero.pad(16, 12, 16, 12)
+	var hrow := hbox(12)
+	var hcol := vbox(2)
+	hcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hcol.alignment = BoxContainer.ALIGNMENT_CENTER
+	hcol.add_child(eyebrow("Your position"))
+	lb_hero_sub = L("Not raced yet", "body", 500, 12, DIM)
+	lb_hero_sub.clip_text = true
+	lb_hero_sub.custom_minimum_size = Vector2(1, 0)
+	hcol.add_child(lb_hero_sub)
+	hrow.add_child(hcol)
+	lb_hero_time = L("", "mono", 700, 18, FG)
+	lb_hero_time.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hrow.add_child(lb_hero_time)
+	lb_hero_rank = L("\u2014", "display", 800, 44, accent, true, 0.0)
+	lb_hero_rank.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hrow.add_child(lb_hero_rank)
+	lb_hero.add_child(hrow)
+	lb_dialog_box.add_child(lb_hero)
+	lb_stats = L("", "body", 600, 10, DIM, false, 0.12, true)
+	lb_dialog_box.add_child(lb_stats)
+	lb_dialog_scroll = ScrollContainer.new()
+	lb_dialog_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	lb_dialog_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	lb_dialog_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lb_dialog_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	lb_dialog_box.add_child(lb_dialog_scroll)
+	lb_box = vbox(2)
+	lb_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lb_dialog_scroll.add_child(lb_box)
+
+
+func _layout_leaderboard(W: float, H: float, sl: float, sr: float, st: float, sb: float) -> void:
+	if lb_modal == null:
+		return
+	var card: Glass = lb_modal.get_child(0)
+	var cw := minf(480.0, W - sl - sr - 16.0)
+	lb_dialog_box.custom_minimum_size.x = cw - 44.0
+	lb_stats.custom_minimum_size.x = cw - 44.0
+	var list_h := lb_box.get_combined_minimum_size().y
+	var base := lb_dialog_box.get_combined_minimum_size().y
+	var ch := clampf(base + list_h + 36.0, 240.0, minf(640.0, H - st - sb - 16.0))
+	card.size = Vector2(cw, ch)
+	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - ch) / 2.0))
+	card._sync()
 
 
 func _rank_row(rank: int, name: String, t: float, me: bool) -> void:
@@ -2812,10 +3285,25 @@ func sync_player_card() -> void:
 	if pc_avatar:
 		pc_avatar.color = accent if net.is_registered() else FG
 		pc_avatar.queue_redraw()
-	if game.track != null:
-		pc_now.text = (str(game.track.name) + "  ·  " + str(game.track.seed)).to_upper()
+	_sync_card_best()
+
+
+## Personal best + medal shown inside the track card (replaces the old bottom-bar chip).
+func _sync_card_best() -> void:
+	if card_best_lbl == null:
+		return
 	var best = game.best
-	pc_best.text = ("BEST " + U.fmt(best.t)) if (best is Dictionary and best.has("t")) else "BEST —"
+	var bt = best.t if (best is Dictionary and best.has("t")) else null
+	card_best_lbl.text = ("BEST  " + U.fmt(bt)) if bt != null else "NOT RACED YET"
+	card_best_lbl.add_theme_color_override("font_color", accent if bt != null else DIM)
+	var med = null
+	if bt != null and game.track != null and game.track.medals is Dictionary:
+		med = CarSim.medal_for(bt, game.track.medals)
+	if card_best_dot:
+		card_best_dot.visible = med != null
+		if med != null:
+			card_best_dot.col = MEDAL_COL[med]
+			card_best_dot.queue_redraw()
 
 
 func set_net_status(text: String) -> void:
@@ -2867,88 +3355,9 @@ func render_favs() -> void:
 	fav_preview_views.clear()
 	fav_empty.visible = favs.is_empty()
 	for f in favs:
-		var cur: bool = game.track != null and f.seed == game.track.seed
-		var compact_row := size.x < 360.0
-		var row := glass(PANEL2, accent if cur else Color(0, 0, 0, 0), 12.0)
-		row.custom_minimum_size = Vector2(0, 72 if compact_row else 76)
-		row.pad(8, 7, 8, 7)
-		var env_key := str(f.get("env", ""))
-		if not Envs.DATA.has(env_key):
-			var parsed = game.parse_seed(str(f.get("seed", "")))
-			if parsed != null:
-				env_key = str(parsed.env)
-		var map_accent := U.css(Envs.DATA[env_key].accent) if Envs.DATA.has(env_key) else accent
-		var h := hbox(6 if compact_row else 10)
-		var preview_box := glass(Color(0, 0, 0, 0.26), LINE, 9.0)
-		var preview_size := 50.0 if compact_row else 62.0
-		preview_box.custom_minimum_size = Vector2(preview_size, preview_size)
-		preview_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		preview_box.pad(2, 2, 2, 2)
-		var preview := MapView.new()
-		preview.preview = true
-		preview.custom_minimum_size = Vector2(preview_size - 4.0, preview_size - 4.0)
-		preview_box.add_child(preview)
-		h.add_child(preview_box)
-		h.add_theme_constant_override("separation", 6 if compact_row else 10)
-		var seed_s: String = str(f.seed)
-		var env_s := env_key
-		var nm := tap(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 8.0)
-		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		nm.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		var nb := L(str(f.name), "display", 800, 17, FG, true, 0.0, true)
-		nb.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		nb.clip_text = true
-		nb.custom_minimum_size = Vector2(1, 0)
-		var seed_label := L(str(f.seed), "mono", 500, 11, DIM)
-		seed_label.clip_text = true
-		seed_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		seed_label.custom_minimum_size = Vector2(1, 0)
-		var details := vbox(3)
-		details.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		details.alignment = BoxContainer.ALIGNMENT_CENTER
-		details.add_child(nb)
-		details.add_child(seed_label)
-		var b = Store.get_value("best5." + str(f.seed), null)
-		var bt = b.t if b != null else null
-		var med = CarSim.medal_for(bt, f.medals) if (f.has("medals") and f.get("v", 0) == 5 and f.medals is Dictionary) else null
-		var meta := hbox(5)
-		if med != null:
-			var d := dot(MEDAL_COL[med], 6)
-			d.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			meta.add_child(d)
-		var tl := L(("BEST " + U.fmt(bt)) if bt != null else "BEST —", "mono", 500, 9 if compact_row else 11, FG)
-		tl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		meta.add_child(tl)
-		details.add_child(meta)
-		nm.add_child(center(details))
-		nm.pressed.connect(func(): game.load_fav(seed_s, env_s))
-		h.add_child(nm)
-		var watch := tap(PANEL2, accent, 9.0)
-		watch.custom_minimum_size = Vector2(64 if compact_row else 62, 44)
-		watch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		watch.add_child(center(L("WATCH", "body", 700, 9, FG, false, 0.06, true)))
-		watch.pressed.connect(func(): game.replay_track(seed_s, env_s))
-		h.add_child(watch)
-		var x := tap(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 9.0)
-		x.custom_minimum_size = Vector2(42 if compact_row else 38, 44)
-		x.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		var xi := Icon.new("x", 14)
-		xi.color = DIM
-		x.add_child(center(xi))
-		x.pressed.connect(func(): game.remove_fav(seed_s))
-		h.add_child(x)
-		nm.focus_neighbor_right = nm.get_path_to(watch)
-		watch.focus_neighbor_left = watch.get_path_to(nm)
-		watch.focus_neighbor_right = watch.get_path_to(x)
-		x.focus_neighbor_left = x.get_path_to(watch)
-		row.add_child(h)
-		fav_list.add_child(row)
-		fav_preview_views.append({
-			"map": preview,
-			"seed": seed_s,
-			"env": env_s,
-			"accent": map_accent,
-		})
+		var tile := _track_tile(str(f.seed), str(f.get("env", "")), str(f.name), true)
+		fav_list.add_child(tile.cell)
+		fav_preview_views.append(tile.view)
 	if game.menu_tab == "tracks":
 		call_deferred("_populate_fav_previews")
 
@@ -2969,66 +3378,9 @@ func render_recent_tracks() -> void:
 		var seed_s := str(entry.get("seed", ""))
 		if seed_s == "":
 			continue
-		var env_s := str(entry.get("env", ""))
-		if not Envs.DATA.has(env_s):
-			var parsed = game.parse_seed(seed_s)
-			if parsed != null:
-				env_s = str(parsed.env)
-		var compact_row := size.x < 360.0
-		var row := glass(PANEL2, Color(0, 0, 0, 0), 12.0)
-		row.custom_minimum_size = Vector2(0, 72 if compact_row else 76)
-		row.pad(8, 7, 8, 7)
-		var h := hbox(6 if compact_row else 10)
-		var preview_box := glass(Color(0, 0, 0, 0.26), LINE, 9.0)
-		var preview_size := 50.0 if compact_row else 62.0
-		preview_box.custom_minimum_size = Vector2(preview_size, preview_size)
-		preview_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		preview_box.pad(2, 2, 2, 2)
-		var preview := MapView.new()
-		preview.preview = true
-		preview.custom_minimum_size = Vector2(preview_size - 4.0, preview_size - 4.0)
-		preview_box.add_child(preview)
-		h.add_child(preview_box)
-		var map_accent := U.css(Envs.DATA[env_s].accent) if Envs.DATA.has(env_s) else accent
-		var details := tap(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 8.0)
-		details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		details.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		var name := L(str(entry.get("name", seed_s)), "display", 800, 15, FG, true, 0.0, true)
-		name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		name.clip_text = true
-		name.custom_minimum_size = Vector2(1, 0)
-		var seed_label := L(seed_s, "mono", 500, 10, DIM)
-		seed_label.clip_text = true
-		seed_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		seed_label.custom_minimum_size = Vector2(1, 0)
-		var detail_text := vbox(3)
-		detail_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		detail_text.alignment = BoxContainer.ALIGNMENT_CENTER
-		detail_text.add_child(name)
-		detail_text.add_child(seed_label)
-		details.add_child(center(detail_text))
-		details.pressed.connect(func(): game.load_fav(seed_s, env_s))
-		h.add_child(details)
-		var best_run = Store.get_value("best5." + seed_s, null)
-		var best_time = best_run.get("t") if best_run is Dictionary else null
-		var best_label := L(("BEST " + U.fmt(best_time)) if best_time != null else "BEST —", "mono", 500, 9 if compact_row else 10, FG)
-		detail_text.add_child(best_label)
-		var watch := tap(PANEL2, accent, 9.0)
-		watch.custom_minimum_size = Vector2(64 if compact_row else 62, 44)
-		watch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		watch.add_child(center(L("WATCH", "body", 700, 9, FG, false, 0.06, true)))
-		watch.pressed.connect(func(): game.replay_track(seed_s, env_s))
-		h.add_child(watch)
-		details.focus_neighbor_right = details.get_path_to(watch)
-		watch.focus_neighbor_left = watch.get_path_to(details)
-		row.add_child(h)
-		recent_track_list.add_child(row)
-		recent_preview_views.append({
-			"map": preview,
-			"seed": seed_s,
-			"env": env_s,
-			"accent": map_accent,
-		})
+		var tile := _track_tile(seed_s, str(entry.get("env", "")), str(entry.get("name", seed_s)), false)
+		recent_track_list.add_child(tile.cell)
+		recent_preview_views.append(tile.view)
 	if game.menu_tab == "tracks":
 		call_deferred("_populate_fav_previews")
 
@@ -3109,9 +3461,9 @@ func _focus_tracks_entry() -> void:
 		return
 	var target: Control = null
 	if fav_list.get_child_count() > 0:
-		target = fav_list.get_child(0).get_child(0).get_child(1)
+		target = fav_list.get_child(0)
 	elif recent_track_list.get_child_count() > 0:
-		target = recent_track_list.get_child(0).get_child(0).get_child(1)
+		target = recent_track_list.get_child(0)
 	else:
 		target = tabs.filter(func(tab): return tab.get_meta("v") == "tracks")[0]
 	if target and target.is_visible_in_tree():
