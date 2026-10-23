@@ -22,7 +22,9 @@ vec3 to_lin(vec3 c) {
 }
 
 float fog_amount(vec3 view_pos) {
-	return smoothstep(g_fog.x, g_fog.y, -view_pos.z);
+	float distance_fog = smoothstep(g_fog.x, g_fog.y, -view_pos.z);
+	float horizon = 1.0 - smoothstep(0.08, 0.65, abs(view_pos.y) / max(-view_pos.z, 1.0));
+	return min(distance_fog * (1.0 + horizon * 0.24), 1.0);
 }
 
 vec3 hemi_light(vec3 world_n) {
