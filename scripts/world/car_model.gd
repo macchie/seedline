@@ -186,7 +186,7 @@ func apply_cfg(color_css: String, finish: String, boost_css := "#38e8ff") -> voi
 	var c := U.css(color_css)
 	boost_col = U.css(boost_css)
 	body_m.set_shader_parameter("albedo", Mats.v3(c))
-	var f: Array = {"gloss": [0.22, 0.15], "metal": [0.32, 0.55], "matte": [0.85, 0.0]}.get(finish, [0.22, 0.15])
+	var f: Array = {"gloss": [0.22, 0.15], "metal": [0.32, 0.55], "matte": [0.85, 0.0], "satin": [0.5, 0.1], "brushed": [0.45, 0.85], "pearl": [0.18, 0.75], "candy": [0.08, 0.3], "chrome": [0.06, 1.0]}.get(finish, [0.22, 0.15])
 	body_m.set_shader_parameter("roughness", f[0])
 	body_m.set_shader_parameter("metallic", f[1])
 	var hsl := U.to_hsl(c)

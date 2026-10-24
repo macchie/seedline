@@ -52,7 +52,7 @@ const DATA := {
 		"words": [["Cargo", "Beacon", "Anchor", "Trawler", "Quay", "Signal", "Foghorn", "Freight"], ["Terminal", "Docks", "Pier", "Channel", "Yard", "Breakwater", "Jetty", "Port"]]},
 	"SALTFLATS": {"name": "Salt Flats", "accent": "#e8d8a2", "onAccent": "#211b0b", "fog": 0xe5ddca, "fogNear": 155.0, "fogFar": 460.0, "hemiS": 0xfff8e9, "hemiG": 0x8e8877, "hemiI": 0.86, "sun": 0xfff0cf, "sunI": 1.28, "sunDir": [-0.55, 1.0, 0.25],
 		"gLow": 0xd9d0bc, "gHigh": 0xf1e9d6, "shoulder": 0xbeb49e, "road": "#555451", "edge": "rgba(255,250,235,.95)", "dash": "rgba(255,224,150,.8)", "curbA": 0xc4a66a, "curbB": 0xf5eedc,
-		"amp": 0.35, "salt": true, "weather": "dust", "grip": 0.99, "smoke": 0xd8cfbd, "grade": {"tint": [1.05, 1.01, 0.94], "sat": 0.72, "cloud": 0.08}, "birds": [3, 0x77746d],
+		"amp": 0.35, "salt": true, "weather": "dust", "grip": 0.99, "smoke": 0xd8cfbd, "grade": {"tint": [1.05, 1.01, 0.94], "sat": 0.72, "cloud": 0.3}, "birds": [3, 0x77746d],
 		"words": [["White", "Mirage", "Alkali", "Prism", "Dry", "Solar", "Glass", "Brine"], ["Pan", "Horizon", "Basin", "Mirror", "Expanse", "Crust", "Reach", "Run"]]},
 }
 

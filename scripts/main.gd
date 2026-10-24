@@ -350,8 +350,52 @@ func build_world() -> void:
 	grade_mat.set_shader_parameter("sat", g.get("sat", 1.1))
 	grade_mat.set_shader_parameter("vig", g.get("vig", 0.34))
 	ink_mat.set_shader_parameter("cloud", g.get("cloud", 0.3))
+	_apply_cloud_motion(e, g)
 	ui.mini.car_col = U.css(car_cfg.color)
 	ui.prev_map.car_col = U.css(car_cfg.color)
+
+
+## Wind direction, speed, coverage and edge softness of the drifting cloud shadows, per environment.
+func _apply_cloud_motion(e: Dictionary, g: Dictionary) -> void:
+	var speed := 1.0
+	var cover := 0.55
+	var soft := 0.085
+	var scale := 1.0
+	match str(e.get("weather", "none")):
+		"rain":
+			speed = 1.8
+			cover = 0.42
+			soft = 0.14
+			scale = 0.8
+		"drizzle":
+			speed = 1.4
+			cover = 0.46
+			soft = 0.12
+			scale = 0.85
+		"snow":
+			speed = 0.6
+			cover = 0.48
+			soft = 0.13
+		"dust":
+			speed = 2.2
+			cover = 0.58
+			soft = 0.1
+			scale = 1.3
+		"embers":
+			speed = 1.2
+			cover = 0.5
+			soft = 0.12
+	if e.get("salt", false):
+		scale = 1.7
+		soft = 0.06
+	elif e.get("shore", false) and speed == 1.0:
+		speed = 1.5
+	var ang := float(g.get("windAngle", fmod(float(hash(str(e.get("name", "")))) * 0.001, TAU)))
+	var dir := Vector2(cos(ang), sin(ang)) * 0.0048 * float(g.get("windSpeed", speed))
+	ink_mat.set_shader_parameter("wind", dir)
+	ink_mat.set_shader_parameter("cover", float(g.get("cover", cover)))
+	ink_mat.set_shader_parameter("soft", soft)
+	ink_mat.set_shader_parameter("cscale", scale)
 
 
 func place_car_at(i: int, back: int = 0) -> void:

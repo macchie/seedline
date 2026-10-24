@@ -794,6 +794,88 @@ func saltflats() -> void:
 		d.rotation.y = p.a
 		return tint(0xe2a24b, 0.2), false)
 	birds(e.birds)
+	saltflats_details()
+
+
+# Buttes, hoodoos, harvest piles, evaporation pans, wind pumps and a power line give the salt pan scale and life.
+func saltflats_details() -> void:
+	var buttes := slice(spaced(around(30, HW + 150.0, 330.0, 0.8), 70.0), 9)
+	w.inst(Geo.cylinder(0.75, 1.0, 1.0, 7).translate(0, 0.5, 0), T(), buttes, func(p, d, i):
+		var s: float = 28.0 + p.s * 40.0
+		d.position = Vector3(p.x, p.y - 1.0, p.z)
+		d.scale = Vector3(s, 14.0 + p.r * 26.0, s * (0.7 + p.r * 0.5))
+		d.rotation.y = p.a
+		return tint(0xb7957a, 0.4), false)
+	var caps := Geo.cylinder(0.78, 0.78, 1.0, 7).translate(0, 0.5, 0)
+	w.inst(caps, T(), buttes, func(p, d, i):
+		var s: float = 28.0 + p.s * 40.0
+		var h: float = 14.0 + p.r * 26.0
+		d.position = Vector3(p.x, p.y - 1.0 + h, p.z)
+		d.scale = Vector3(s * 0.8, 2.5, s * 0.8 * (0.7 + p.r * 0.5))
+		d.rotation.y = p.a
+		return tint(0xd9c7a8, 0.3), false)
+	var hoodoos := spaced(around(70, HW + 14.0, 110.0, 0.4), 12.0)
+	var stem := Geo.cylinder(0.45, 0.75, 1.0, 6).translate(0, 0.5, 0)
+	w.inst(stem, T(), hoodoos, func(p, d, i):
+		var s: float = 0.8 + p.s * 1.2
+		d.position = Vector3(p.x, p.y, p.z)
+		d.scale = Vector3(s, 2.5 + p.r * 4.0, s)
+		d.rotation.y = p.a
+		obst(p, 0.9 * s)
+		return tint(0xe9e1cf, 0.3))
+	w.inst(Geo.cylinder(1.0, 0.6, 0.7, 7).translate(0, 0.35, 0), T(), hoodoos, func(p, d, i):
+		var s: float = 0.8 + p.s * 1.2
+		d.position = Vector3(p.x, p.y + 2.5 + p.r * 4.0, p.z)
+		d.scale = Vector3(s, s, s)
+		d.rotation.y = p.a
+		return tint(0xd3c9b3, 0.3), false)
+	var piles := slice(spaced(around(40, HW + 22.0, 105.0, 0.3), 26.0), 12)
+	w.inst(Geo.cone(1.0, 1.0, 9).translate(0, 0.5, 0), T(), piles, func(p, d, i):
+		var s: float = 3.5 + p.s * 3.5
+		d.position = Vector3(p.x, p.y, p.z)
+		d.scale = Vector3(s, s * 0.65, s)
+		d.rotation.y = p.a
+		obst(p, s * 0.8)
+		return tint(0xf6f2e8, 0.15))
+	var pans := slice(spaced(around(30, HW + 18.0, 120.0, 0.3), 30.0, piles, 14.0), 10)
+	w.inst(Geo.cylinder(1.0, 1.0, 0.06, 14).translate(0, 0.03, 0), T(), pans, func(p, d, i):
+		var s: float = 7.0 + p.s * 9.0
+		d.position = Vector3(p.x, p.y + 0.05, p.z)
+		d.scale = Vector3(s, 1.0, s * (0.6 + p.r * 0.5))
+		d.rotation.y = p.a
+		return tint(0x8fb5b0, 0.25), false)
+	var sheds: Array = []
+	for p in slice(spaced(around(14, HW + 40.0, 120.0, 0.3), 45.0, piles, 20.0), 3):
+		sheds.append(house(p, {"wc": col(0xc9b9a0), "rc": col(0x6c5a48), "hw": 4.5, "hd": 3.8, "hh": 2.8, "rh": 1.6, "chim": false}))
+	houses(sheds)
+	var pumps := slice(spaced(around(20, HW + 26.0, 110.0, 0.3), 50.0, piles, 20.0), 5)
+	for p in pumps:
+		var g := group(p.x, p.y, p.z)
+		var steel := T({"color": 0x8e9496})
+		var tower := mesh(Geo.cylinder(0.12, 0.35, 1.0, 5).translate(0, 0.5, 0), steel, true)
+		tower.scale = Vector3(1.0, 9.0, 1.0)
+		g.add_child(tower)
+		var rotor := w.node()
+		rotor.position = Vector3(0.0, 9.0, 0.5)
+		g.add_child(rotor)
+		var blade := Geo.box(0.5, 3.4, 0.05).translate(0, 1.9, 0)
+		for k in 8:
+			var b := mesh(blade, T({"color": 0xd8d4c8}))
+			b.rotation.z = k * TAU / 8.0
+			rotor.add_child(b)
+		var ph := R() * TAU
+		g.rotation.y = R() * TAU
+		obst(p, 1.0)
+		w.anims.append(func(dt, tt):
+			rotor.rotation.z -= dt * (1.2 + 0.5 * sin(tt * 0.3 + ph)))
+	# Power line paralleling the road far out on the pan.
+	var poles := slice(spaced(around(60, HW + 60.0, 95.0, 0.0), 38.0), 14)
+	w.inst(Geo.cylinder(0.12, 0.16, 8.0, 5).translate(0, 4.0, 0), T({"color": 0x594a3a}), poles, func(p, d, i):
+		d.position = Vector3(p.x, p.y, p.z)
+		obst(p, 0.3))
+	w.inst(Geo.box(2.4, 0.15, 0.15).translate(0, 7.6, 0), T({"color": 0x594a3a}), poles, func(p, d, i):
+		d.position = Vector3(p.x, p.y, p.z)
+		d.rotation.y = p.a)
 
 
 ## Wireframe version of a mesh (three.js wireframe: every triangle edge)

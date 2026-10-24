@@ -1224,7 +1224,7 @@ local function rpc_leaderboards(context, _payload)
 end
 
 --- Garage settings follow the account. Last write wins; the server clock orders the revisions.
-local CAR_FINISHES = { gloss = true, metal = true, matte = true }
+local CAR_FINISHES = { gloss = true, metal = true, matte = true, satin = true, brushed = true, pearl = true, candy = true, chrome = true }
 
 local function rpc_get_car(context, _payload)
   local uid = require_user(context)

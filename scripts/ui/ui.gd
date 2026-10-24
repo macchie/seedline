@@ -16,7 +16,8 @@ const FAST := Color("#4fb2ff")
 const SLOW := Color("#ff5a4f")
 const MEDAL_COL := {"author": Color("#3ddc84"), "gold": Color("#f5c542"), "silver": Color("#c9cfd8"), "bronze": Color("#cf8752")}
 const SWATCHES := ["#e8402c", "#ff8a1f", "#f2c230", "#2ec27e", "#1fb6c9", "#1f6ff1", "#7a4dff", "#f04fb3", "#eef1f5"]
-const BOOST_SWATCHES := ["#38e8ff", "#3fb4ff", "#ff9a3c", "#d25bff", "#2ec27e", "#ff4f78", "#f2c230", "#eef1f5"]
+const FINISHES := [["gloss", "Gloss"], ["satin", "Satin"], ["matte", "Matte"], ["brushed", "Brushed"], ["metal", "Metallic"], ["pearl", "Pearl"], ["candy", "Candy"], ["chrome", "Chrome"]]
+const BOOST_SWATCHES := ["#38e8ff", "#3fb4ff", "#ff9a3c", "#d25bff", "#2ec27e", "#ff4f78", "#f2c230", "#8cff4f", "#eef1f5"]
 
 # Named driver tiers mapped from the global PP rating (ascending floors). Tune the floors as real
 # player data lands; the names and colours are what the player actually sees on the finish card and
@@ -104,6 +105,7 @@ var rand_cap: Label
 var name_base := 34.0
 var nav_menu: Control
 var section_title: Label
+var section_title_wanted := false
 var btn_rand: Tap
 var panes_box: VBoxContainer
 # track-card best time + medal (moved out of the bottom toolbar)
@@ -190,6 +192,9 @@ var swatches: Array = []
 var boost_swatch_box: GridContainer
 var boost_swatches: Array = []
 var finish_seg: Array = []
+var garage_tab_seg: Array = []
+var paint_box: VBoxContainer
+var boost_box: VBoxContainer
 var fav_list: GridContainer
 var fav_empty: Label
 var recent_track_list: GridContainer
@@ -1218,28 +1223,20 @@ func _fmt_countdown(secs: float) -> String:
 
 func _build_garage_pane(parent: Control) -> void:
 	var p := _pane(parent, "garage")
-	var preview_note := glass(PANEL2, LINE, 12.0)
-	preview_note.pad(12, 9, 12, 9)
-	var preview_row := hbox(8)
-	var preview_dot := dot(accent, 8)
-	preview_dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	preview_row.add_child(preview_dot)
-	var preview_text := vbox(2)
-	preview_text.add_child(L("Live car preview", "body", 700, 12, FG, false, 0.08, true))
-	var preview_caption := L("Paint and booster colors update instantly.", "body", 400, 11, DIM)
-	preview_caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	preview_caption.custom_minimum_size = Vector2(1, 0)
-	preview_text.add_child(preview_caption)
-	preview_row.add_child(preview_text)
-	preview_note.add_child(preview_row)
-	p.add_child(preview_note)
-	p.add_child(eyebrow("Paint"))
+	var gt := seg([["paint", "Paint & finish"], ["booster", "Booster color"]], func(v): _set_garage_tab(v))
+	garage_tab_seg = gt[1]
+	p.add_child(gt[0])
+	paint_box = vbox(10)
+	boost_box = vbox(10)
+	p.add_child(paint_box)
+	p.add_child(boost_box)
+	paint_box.add_child(eyebrow("Paint"))
 	swatch_box = GridContainer.new()
 	swatch_box.columns = 5
 	swatch_box.add_theme_constant_override("h_separation", 8)
 	swatch_box.add_theme_constant_override("v_separation", 8)
 	swatch_box.mouse_filter = Control.MOUSE_FILTER_PASS
-	p.add_child(swatch_box)
+	paint_box.add_child(swatch_box)
 	for c in SWATCHES:
 		var b := tap(U.css(c), Color(0, 0, 0, 0), 12.0)
 		b.inset_col = Color(0, 0, 0, 0.2)
@@ -1262,13 +1259,13 @@ func _build_garage_pane(parent: Control) -> void:
 	swatch_box.add_child(cu)
 	custom_swatch = cu
 	swatches.append(cu)
-	p.add_child(eyebrow("Booster color"))
+	boost_box.add_child(eyebrow("Booster color"))
 	boost_swatch_box = GridContainer.new()
-	boost_swatch_box.columns = 4
+	boost_swatch_box.columns = 5
 	boost_swatch_box.add_theme_constant_override("h_separation", 8)
 	boost_swatch_box.add_theme_constant_override("v_separation", 8)
 	boost_swatch_box.mouse_filter = Control.MOUSE_FILTER_PASS
-	p.add_child(boost_swatch_box)
+	boost_box.add_child(boost_swatch_box)
 	for c in BOOST_SWATCHES:
 		var b := tap(U.css(c), Color(0, 0, 0, 0), 12.0)
 		b.inset_col = Color(0, 0, 0, 0.2)
@@ -1304,10 +1301,19 @@ func _build_garage_pane(parent: Control) -> void:
 			game.set_car_color("#" + c.to_html(false)))
 	color_popup.add_child(color_picker)
 	add_child(color_popup)
-	p.add_child(eyebrow("Finish"))
-	var s := seg([["gloss", "Gloss"], ["metal", "Metallic"], ["matte", "Matte"]], func(v): game.set_finish(v))
-	finish_seg = s[1]
-	p.add_child(s[0])
+	paint_box.add_child(eyebrow("Finish"))
+	finish_seg = []
+	for row in [FINISHES.slice(0, 4), FINISHES.slice(4)]:
+		var s := seg(row, func(v): game.set_finish(v))
+		finish_seg.append_array(s[1])
+		paint_box.add_child(s[0])
+	_set_garage_tab("paint")
+
+
+func _set_garage_tab(v: String) -> void:
+	paint_box.visible = v == "paint"
+	boost_box.visible = v == "booster"
+	set_seg(garage_tab_seg, v)
 
 
 func _build_tracks_pane(parent: Control) -> void:
@@ -3189,7 +3195,7 @@ func relayout() -> void:
 	seed_copy_lbl.text = "COPY" if compact_seed else "TAP TO COPY"
 	restyle(seed_lbl, 12.0 if compact_seed else 15.0)
 	restyle(seed_copy_lbl, 9.0 if compact_seed else 10.0)
-	section_title.visible = not landscape_short
+	section_title.visible = section_title_wanted and not landscape_short
 	restyle(section_title, 18.0 if not desktop else 20.0)
 	# section nav + panel
 	var nav_top := top_pad + bsz.y + 14.0
@@ -4337,6 +4343,7 @@ func set_tab(t: String) -> void:
 	_sync_tab_styles()
 	if section_title:
 		section_title.text = {"drive": "PLAY", "garage": "GARAGE"}.get(t, t.to_upper())
+		section_title_wanted = false
 	for k in panes:
 		panes[k].visible = k == t
 	tab_scroll.scroll_vertical = 0
@@ -4402,7 +4409,7 @@ func _process(_dt: float) -> void:
 			_focus_direction(_nav_direction)
 			_nav_repeat_timer = NAV_REPEAT_DELAY
 	# keep swatches square (aspect-ratio: 1)
-	if swatch_box and swatch_box.is_visible_in_tree():
+	if swatch_box and (swatch_box.is_visible_in_tree() or boost_swatch_box.is_visible_in_tree()):
 		for b in swatches + boost_swatches:
 			if absf(b.custom_minimum_size.y - b.size.x) > 0.5:
 				b.custom_minimum_size.y = b.size.x

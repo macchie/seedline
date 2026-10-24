@@ -14,7 +14,10 @@ const MIN_R := 18.0
 const BR_H := 8.5
 const BR_F := 10
 const BR_R := 26
-const FAMILIES := [["loop", 0.15], ["eight", 0.13], ["snake", 0.17], ["spiral", 0.12], ["flower", 0.13], ["street", 0.17], ["switchback", 0.13]]
+const FAMILIES := [["loop", 0.13], ["eight", 0.11], ["snake", 0.14], ["spiral", 0.10], ["flower", 0.11], ["street", 0.13], ["switchback", 0.10], ["stadium", 0.09], ["dogbone", 0.09]]
+## Per-track shape distortion: aspect ratio spread (e^±this/2) and max banana bend.
+const ASPECT_SPREAD := 1.2
+const BEND_MAX := 0.45
 
 
 class Poly:
@@ -162,6 +165,41 @@ static func base_shape(rng: SeedRng, mode: String) -> Poly:
 				q.add(p2x, p2y)
 				t = t2 + 0.06
 				j += 1
+	elif mode == "stadium":
+		var n := 5 + int(floor(rng.next() * 4))
+		var L := 0.7 + rng.next() * 1.0
+		var R := 0.5
+		var dent := rng.next()
+		for i in n + 1:
+			var a := -PI / 2.0 + float(i) / n * PI
+			var rj := R * (1.0 + (rng.next() - 0.5) * 0.25)
+			q.add(L / 2.0 + cos(a) * rj, sin(a) * rj)
+		if dent < 0.6:
+			q.add(L * (rng.next() - 0.5) * 0.4, R * (0.55 + rng.next() * 0.3))
+		for i in n + 1:
+			var a := PI / 2.0 + float(i) / n * PI
+			var rj := R * (1.0 + (rng.next() - 0.5) * 0.25)
+			q.add(-L / 2.0 + cos(a) * rj, sin(a) * rj)
+		if dent >= 0.3:
+			q.add(L * (rng.next() - 0.5) * 0.4, -R * (0.55 + rng.next() * 0.3))
+	elif mode == "dogbone":
+		var c := 0.55 + rng.next() * 0.25
+		var r1 := 0.38 + rng.next() * 0.2
+		var r2 := 0.28 + rng.next() * 0.2
+		var w := 0.18 + rng.next() * 0.12
+		var th := 2.1 + rng.next() * 0.3
+		var n1 := 5 + int(floor(rng.next() * 3))
+		for i in n1 + 1:
+			var a := -th + float(i) / n1 * 2.0 * th
+			var rj := r1 * (1.0 + (rng.next() - 0.5) * 0.2)
+			q.add(c + cos(a) * rj, sin(a) * rj)
+		q.add(0.0, w)
+		var n2 := 4 + int(floor(rng.next() * 3))
+		for i in n2 + 1:
+			var a := PI - th + float(i) / n2 * 2.0 * th
+			var rj := r2 * (1.0 + (rng.next() - 0.5) * 0.2)
+			q.add(-c + cos(a) * rj, sin(a) * rj)
+		q.add(0.0, -w)
 	else:
 		var n := 7 + int(floor(rng.next() * 7))
 		var ax := 0.7 + rng.next() * 0.6
@@ -213,6 +251,14 @@ static func polygon_candidate(rng: SeedRng, target_len: float, mode: String, sty
 		var a := q.x[i]
 		var b := q.y[i]
 		r.add((a * c - b * s) * sx, a * s + b * c)
+	# Stretch and bend so two tracks of one family rarely share proportions.
+	var asp := exp((rng.next() - 0.5) * ASPECT_SPREAD)
+	var bend := (rng.next() - 0.5) * 2.0 * BEND_MAX if mode != "street" else 0.0
+	for i in m:
+		var px := r.x[i] * asp
+		var py := r.y[i] / asp
+		r.x[i] = px
+		r.y[i] = py + bend * px * px
 	var per := 0.0
 	for i in m:
 		var j := (i + 1) % m
@@ -705,7 +751,7 @@ static func generate(seed: String, env_key: String) -> TrackData:
 		if not elevate(t, xs, rng):
 			continue
 		valid += 1
-		var sc := complexity(t) - maxf(0.0, longest_straight(t) - 280.0) / 60.0 + rng.next() * 2.0
+		var sc := complexity(t) - maxf(0.0, longest_straight(t) - 280.0) / 60.0 + rng.next() * 4.0
 		if sc > best_score:
 			best_score = sc
 			tr = t
