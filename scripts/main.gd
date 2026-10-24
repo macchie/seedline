@@ -1467,7 +1467,15 @@ func _update_car_visuals(dt: float, x: float, z: float, h: float, speed: float) 
 	if car_v.ex_glow:
 		car_v.ex_glow_m.set_shader_parameter("tint", Mats.v3(ec))
 		var sc := (4.0 if car.is_boosting() else (3.3 if garage_preview else (1.4 if lin.gas else 0.9))) * (0.9 + randf() * 0.2)
-		car_v.ex_glow_m.set_shader_parameter("size", sc)
+		car_v.ex_glow_m.set_shader_parameter("size", sc * 0.55)
+		var fl := 3.4 if car.is_boosting() else (2.6 if garage_preview else (0.9 if lin.gas else 0.0))
+		fl *= 0.9 + randf() * 0.2
+		car_v.flame.visible = fl > 0.05
+		car_v.flame.scale = Vector3(1.0 + fl * 0.08, maxf(fl, 0.01), 1.0 + fl * 0.08)
+		car_v.flame.position.z = car_v.flame_base_z - fl * 0.5
+		car_v.flame_m.set_shader_parameter("tint", Mats.v3(car_v.boost_col if boosting_visual else car_v.glow_col))
+		car_v.flame_m.set_shader_parameter("power", 1.0 if boosting_visual else 0.7)
+		car_v.flame_m.set_shader_parameter("flicker", randf())
 	var L := 1.0 if env.get("dark", false) else 0.0
 	car_v.tail_m.set_shader_parameter("color", Mats.v3(U.hexc(0xff2a2a if (lin.brake and state != "menu") else (0xd01818 if L > 0.3 else 0x7a0d0d))))
 	car_v.headlight.visible = L > 0.0

@@ -46,6 +46,9 @@ var gl: Material
 var exm: Material
 var helmet: Material
 var glass: Material
+var flame: MeshInstance3D
+var flame_m: ShaderMaterial
+var flame_base_z := 0.0
 var tm: Material
 var rim: Material
 var trim: Material
@@ -77,6 +80,8 @@ func build(model: String) -> void:
 	fronts.clear()
 	ex_glow = null
 	ex_glow_m = null
+	flame = null
+	flame_m = null
 	underglow = null
 	beam = null
 	headlight = null
@@ -161,6 +166,7 @@ func _build_formula() -> void:
 		ex_glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		ex_glow.position = Vector3(0, 0.48, -2.85)
 		body.add_child(ex_glow)
+		_flame(0.0, 0.48, -2.55, 0.15)
 	# floor and suspension blades
 	add(Geo.box(1.7, 0.08, 4.4), carbon, 0, 0.2, -0.1)
 	for s: float in [-1.0, 1.0]:
@@ -264,6 +270,22 @@ func _tailpipe(x: float, y: float, z: float, r: float) -> void:
 		ex_glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		ex_glow.position = Vector3(x, y, z - 0.35)
 		body.add_child(ex_glow)
+		_flame(x, y, z, r)
+
+
+## Cel-shaded booster flame cone behind a tailpipe; main.gd scales it with throttle and boost.
+func _flame(x: float, y: float, z: float, r: float) -> void:
+	flame_m = ShaderMaterial.new()
+	flame_m.shader = Mats.shader("boost_flame")
+	flame = MeshInstance3D.new()
+	flame.mesh = Geo.cylinder(0.0, r * 1.9, 1.0, 14).to_mesh()
+	flame.material_override = flame_m
+	flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	flame.rotation.x = -PI / 2.0
+	flame_base_z = z - 0.12
+	flame.position = Vector3(x, y, flame_base_z)
+	flame.scale = Vector3(1, 0.01, 1)
+	body.add_child(flame)
 
 
 ## Round or square headlamp pair and the two tail lamps.
