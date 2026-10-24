@@ -194,6 +194,8 @@ var boost_swatches: Array = []
 var finish_seg: Array = []
 var garage_tab_seg: Array = []
 var paint_box: VBoxContainer
+var model_box: VBoxContainer
+var model_seg: Array = []
 var boost_box: VBoxContainer
 var fav_list: GridContainer
 var fav_empty: Label
@@ -1223,13 +1225,22 @@ func _fmt_countdown(secs: float) -> String:
 
 func _build_garage_pane(parent: Control) -> void:
 	var p := _pane(parent, "garage")
-	var gt := seg([["paint", "Paint & finish"], ["booster", "Booster color"]], func(v): _set_garage_tab(v))
+	var gt := seg([["car", "Model"], ["paint", "Paint & finish"], ["booster", "Booster"]], func(v): _set_garage_tab(v))
 	garage_tab_seg = gt[1]
 	p.add_child(gt[0])
+	model_box = vbox(10)
 	paint_box = vbox(10)
 	boost_box = vbox(10)
+	p.add_child(model_box)
 	p.add_child(paint_box)
 	p.add_child(boost_box)
+	model_box.add_child(eyebrow("Car model"))
+	model_seg = []
+	for row in [CarModel.MODELS.slice(0, 2), CarModel.MODELS.slice(2)]:
+		var ms := seg(row, func(v): game.set_car_model(v))
+		model_seg.append_array(ms[1])
+		model_box.add_child(ms[0])
+	model_box.add_child(L("Styling only. Every car drives the same.", "body", 400, 12, DIM))
 	paint_box.add_child(eyebrow("Paint"))
 	swatch_box = GridContainer.new()
 	swatch_box.columns = 5
@@ -1307,10 +1318,11 @@ func _build_garage_pane(parent: Control) -> void:
 		var s := seg(row, func(v): game.set_finish(v))
 		finish_seg.append_array(s[1])
 		paint_box.add_child(s[0])
-	_set_garage_tab("paint")
+	_set_garage_tab("car")
 
 
 func _set_garage_tab(v: String) -> void:
+	model_box.visible = v == "car"
 	paint_box.visible = v == "paint"
 	boost_box.visible = v == "booster"
 	set_seg(garage_tab_seg, v)
@@ -4388,6 +4400,7 @@ func sync_car() -> void:
 		var on := (key == c) or (key == "custom" and custom)
 		b.set_border_state(FG if on else Color(1, 1, 1, 0.12), 2.0 if on else 1.0)
 	set_seg(finish_seg, game.car_cfg.finish)
+	set_seg(model_seg, game.car_cfg.get("model", "formula"))
 	var boost_color: String = game.car_cfg.boost_color
 	var custom_boost := not BOOST_SWATCHES.has(boost_color)
 	for b in boost_swatches:

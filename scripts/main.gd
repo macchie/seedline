@@ -10,7 +10,7 @@ const GHOST_FLEET_SCRIPT = preload("res://scripts/world/rival_ghost_fleet.gd")
 
 # --- persistent options (same keys and defaults as localStorage in the web build)
 var opts := {"gfx": "high", "sound": true, "side": "left", "sensV": 75, "stats": ""}
-var car_cfg := {"color": "#e8402c", "finish": "gloss", "boost_color": "#38e8ff"}
+var car_cfg := {"color": "#e8402c", "finish": "gloss", "boost_color": "#38e8ff", "model": "formula"}
 var favs: Array = []
 var recent_tracks: Array = []
 var is_touch := false
@@ -195,7 +195,7 @@ func _build_scene() -> void:
 	ink.custom_aabb = AABB(Vector3(-1e5, -1e5, -1e5), Vector3(2e5, 2e5, 2e5))
 	ink.position = Vector3(0, 0, -2)
 	cam.add_child(ink)
-	car_v = CarModel.new(false)
+	car_v = CarModel.new(false, str(car_cfg.get("model", "formula")))
 	add_child(car_v)
 	ghost_v = CarModel.new(true)
 	ghost_v.visible = false
@@ -1230,6 +1230,12 @@ func set_finish(f: String) -> void:
 	save_car()
 
 
+## Cosmetic only: every model shares the same handling, so the server never needs to know.
+func set_car_model(m: String) -> void:
+	car_cfg.model = CarModel.valid_model(m)
+	save_car(false)
+
+
 func _on_account_changed() -> void:
 	ui.sync_account()
 	fetch_leaderboard()
@@ -1251,6 +1257,9 @@ func save_car(push := true) -> void:
 	Store.set_value("car", car_cfg)
 	if push and net != null:
 		net.queue_car()
+	var model := CarModel.valid_model(str(car_cfg.get("model", "formula")))
+	if car_v.model_id != model:
+		car_v.build(model)
 	car_v.apply_cfg(car_cfg.color, car_cfg.finish, car_cfg.boost_color)
 	ui.mini.car_col = U.css(car_cfg.color)
 	ui.prev_map.car_col = U.css(car_cfg.color)
