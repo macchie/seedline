@@ -3,6 +3,13 @@ class_name TrackGen
 ## random draws so every seed builds the same circuit in both versions. Polylines are kept in 64-bit floats
 ## (like JS numbers); the resampled centreline is stored in 32-bit arrays (like the JS Float32Arrays).
 
+## Track length range in metres. Must stay inside the server's 1500-5000 m limit
+## (server/nakama/modules/seedline.lua, CFG.min_length_m / max_length_m).
+const MIN_TRACK_LENGTH := 1500.0
+const MAX_TRACK_LENGTH := 5000.0
+## Fraction of the range kept clear at both ends when drawing the target length,
+## so candidates (which drift after filleting) are not over-rejected.
+const LENGTH_MARGIN := 0.06
 const MIN_R := 18.0
 const BR_H := 8.5
 const BR_F := 10
@@ -669,8 +676,9 @@ static func generate(seed: String, env_key: String) -> TrackData:
 				fam = fp[0]
 				break
 	var style := {"tight": 0.15 + rng.next() * 0.6, "busy": rng.next()}
-	var base_len := 2600.0 if fam == "snake" else (2000.0 if fam == "street" else 2200.0)
-	var target_len := base_len + rng.next() * 1300.0
+	var lo := MIN_TRACK_LENGTH * (1.0 + LENGTH_MARGIN)
+	var hi := MAX_TRACK_LENGTH * (1.0 - LENGTH_MARGIN)
+	var target_len := lerpf(lo, hi, rng.next())
 	style["sweep"] = maxf(0.05, (1.0 - float(style["tight"])) * 0.35)
 	var at := 0
 	while at < 300 and valid < 12:
@@ -689,7 +697,7 @@ static func generate(seed: String, env_key: String) -> TrackData:
 		var t := resample_closed(path)
 		if t == null:
 			continue
-		if t.min_radius < MIN_R * 0.85 or t.length < 1600.0 or t.length > 4800.0:
+		if t.min_radius < MIN_R * 0.85 or t.length < MIN_TRACK_LENGTH or t.length > MAX_TRACK_LENGTH:
 			continue
 		var xs = contacts(t)
 		if xs == null or xs.size() > 2 or (xs.size() > 0) != want_cross:
@@ -774,7 +782,7 @@ static func generate(seed: String, env_key: String) -> TrackData:
 	var w1: Array = w[1]
 	tr.name = w0[int(floor(rng.next() * w0.size()))] + " " + w1[int(floor(rng.next() * w1.size()))]
 	# checkpoints stay on the ground so their gates have somewhere to stand
-	var K := int(U.clampf2(U.jround(tr.length / 540.0), 3.0, 6.0))
+	var K := int(U.clampf2(U.jround(tr.length / 540.0), 3.0, 8.0))
 	tr.cps = PackedInt32Array()
 	for kq in range(1, K + 1):
 		var c := int(U.jround(float(kq * N) / (K + 1)))
