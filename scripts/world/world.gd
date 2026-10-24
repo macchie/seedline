@@ -19,7 +19,7 @@ var grid := {}          # cell key -> PackedInt32Array of sample indices
 var obs := {}           # cell key -> Array of Vector3(x, z, r)
 var bounds := {}
 var last_i := -1        # distToTrack.i
-var river_d := 1e9      # side result of terrain_h (riverD)
+var river_d := 1e9      # side result of terrain_h: metres outside the nearest river or lake
 
 var anims: Array = []   # Callable(dt, tt)
 var emitters: Array = []
@@ -28,6 +28,8 @@ var gates: Array = []   # {mesh, mat, flash, k}
 var water_mats: Array = []
 var ripples := PackedVector3Array()
 var rip_i := 0
+var lakes := PackedFloat64Array()   # stride 5: x, z, radius, phase a, phase b
+var _tstep := 8.0
 var cam_look := Vector3.ZERO
 var weather_mat: ShaderMaterial = null
 var amb := {}           # rising smoke particle state
@@ -172,6 +174,92 @@ func _river_dist(x: float, z: float) -> float:
 	return sqrt(best)
 
 
+## Nearest river point as (distance, tangent x, tangent z); distance is 1e9 when out of reach. Thread-safe.
+func _river_near(x: float, z: float) -> Vector3:
+	var segs = _rgrid.get(U.grid_key(int(floor(x / RCS)), int(floor(z / RCS))))
+	if segs == null:
+		return Vector3(1e9, 0.0, 0.0)
+	var rx: PackedFloat64Array = t.river.x
+	var ry: PackedFloat64Array = t.river.y
+	var best := 1e18
+	var bt := Vector2.ZERO
+	for k in segs:
+		var ax := rx[k]
+		var az := ry[k]
+		var dx := rx[k + 1] - ax
+		var dz := ry[k + 1] - az
+		var L2 := dx * dx + dz * dz
+		if L2 == 0.0:
+			L2 = 1.0
+		var u := U.clampf2(((x - ax) * dx + (z - az) * dz) / L2, 0.0, 1.0)
+		var ex := ax + dx * u - x
+		var ez := az + dz * u - z
+		var d := ex * ex + ez * ez
+		if d < best:
+			best = d
+			bt = Vector2(dx, dz) / sqrt(L2)
+	return Vector3(sqrt(best), bt.x, bt.y)
+
+
+## Irregular lakes, preferably touching the river so the two merge into one body of water.
+func _build_lakes() -> void:
+	lakes = PackedFloat64Array()
+	if e.get("shore", false) or not e.get("river", false) or float(e.get("amp", 0.0)) == 0.0:
+		return
+	var lr := SeedRng.from_seed(t.seed + "#lakes")
+	var want := 1 + (1 if lr.next() < 0.45 else 0)
+	for tries in 50:
+		if lakes.size() >= want * 5:
+			break
+		var r := 36.0 + lr.next() * 64.0
+		var x: float
+		var z: float
+		if t.river != null and lr.next() < 0.7:
+			var rx: PackedFloat64Array = t.river.x
+			var ry: PackedFloat64Array = t.river.y
+			var k := mini(rx.size() - 2, int(lr.next() * (rx.size() - 1)))
+			var dx := rx[k + 1] - rx[k]
+			var dz := ry[k + 1] - ry[k]
+			var L := maxf(U.hypot(dx, dz), 0.001)
+			var side := 1.0 if lr.next() < 0.5 else -1.0
+			var off := float(t.river.w) + r * (0.3 + lr.next() * 0.35)
+			x = rx[k] - dz / L * off * side
+			z = ry[k] + dx / L * off * side
+		else:
+			x = U.lerpf2(bounds.x0 + r, bounds.x1 - r, lr.next())
+			z = U.lerpf2(bounds.z0 + r, bounds.z1 - r, lr.next())
+		if x < bounds.x0 + r or x > bounds.x1 - r or z < bounds.z0 + r or z > bounds.z1 - r:
+			continue
+		var need := r * 1.36 + 26.0
+		if dist_to_track(x, z, need + 4.0) < need:
+			continue
+		lakes.append_array([x, z, r, lr.next() * U.TAU, lr.next() * U.TAU])
+
+
+## Metres outside the nearest lake shore (negative inside) and the normalised radius of that lake.
+func _lake_sd(x: float, z: float) -> Vector2:
+	var best := Vector2(1e9, 2.0)
+	for i in range(0, lakes.size(), 5):
+		var dx := x - lakes[i]
+		var dz := z - lakes[i + 1]
+		var dist := sqrt(dx * dx + dz * dz)
+		if dist > lakes[i + 2] * 1.4 + 9.0:
+			continue
+		var a := atan2(dz, dx)
+		var rr: float = lakes[i + 2] * (1.0 + 0.22 * sin(3.0 * a + lakes[i + 3]) + 0.12 * sin(5.0 * a + lakes[i + 4]))
+		var sd := dist - rr
+		if sd < best.x:
+			best = Vector2(sd, dist / rr)
+	return best
+
+
+## True when (x, z) is within margin metres of a river or lake.
+func water_near(x: float, z: float, margin: float) -> bool:
+	if t.river != null and _river_dist(x, z) < float(t.river.w) + margin:
+		return true
+	return lakes.size() > 0 and _lake_sd(x, z).x < margin
+
+
 func terrain_base(x: float, z: float, d: float) -> float:
 	if e.get("shore", false):
 		var lava: bool = e.get("lava", false)
@@ -195,23 +283,31 @@ func terrain_base(x: float, z: float, d: float) -> float:
 ## Ground height; [h, riverD] so worker threads need no shared state
 func terrain_hr(x: float, z: float, d: float) -> Vector2:
 	var h := terrain_base(x, z, d)
-	var rd := 1e9
+	var sd := 1e9
 	if t.river != null:
 		var w: float = t.river.w
-		rd = _river_dist(x, z)
+		var rd := _river_dist(x, z)
+		sd = rd - w
 		if rd < w + 8.0:
 			var bed := -0.6 - 2.4 * maxf(0.0, 1.0 - pow(rd / w, 2.0))
 			if rd < w:
 				h = minf(h, bed)
 			else:
 				h = minf(h, U.lerpf2(-0.6, h, U.smooth01((rd - w) / 8.0)))
-	return Vector2(h, rd)
+	if lakes.size() > 0:
+		var lk := _lake_sd(x, z)
+		if lk.x < 8.0:
+			if lk.x < 0.0:
+				h = minf(h, -0.6 - 3.2 * (1.0 - lk.y * lk.y))
+			else:
+				h = minf(h, U.lerpf2(-0.6, h, U.smooth01(lk.x / 8.0)))
+			sd = minf(sd, lk.x)
+	return Vector2(h, sd)
 
 
 func terrain_h(x: float, z: float, d: float) -> float:
 	var r := terrain_hr(x, z, d)
-	if t.river != null:
-		river_d = r.y
+	river_d = r.y
 	return r.x
 
 
@@ -411,7 +507,7 @@ func place_around(count: int, min_d: float, max_d: float, far_frac: float = 0.28
 		var d := dist_to_track(x, z, 110.0 if shore else maxf(min_d + 40.0, max_d + 10.0))
 		if d < min_d:
 			continue
-		if t.river != null and _river_dist(x, z) < float(t.river.w) + 5.0:
+		if water_near(x, z, 5.0):
 			continue
 		var ii := last_i if last_i >= 0 else i0
 		var y := terrain_h(x, z, d)
@@ -450,13 +546,14 @@ func build(track: TrackData, env: Dictionary, touch: bool) -> void:
 		z0 = minf(z0, t.pz[i])
 		z1 = maxf(z1, t.pz[i])
 	bounds = {"x0": x0 - 150.0, "x1": x1 + 150.0, "z0": z0 - 150.0, "z1": z1 + 150.0, "cx": (x0 + x1) / 2.0, "cz": (z0 + z1) / 2.0}
+	_build_lakes()
 	_build_terrain()
 	_build_road()
 	_build_start()
 	_build_gates()
 	_build_pads()
 	_build_bridges()
-	_build_river()
+	_build_water()
 	var props := Props.new(self)
 	props.build()
 	_build_common()
@@ -472,6 +569,7 @@ func _build_terrain() -> void:
 	var seg := 190 if t.river != null else (130 if shore else 150) if amp != 0.0 else 2
 	var vn := seg + 1
 	var step := S / seg
+	_tstep = step
 	var gx0: float = bounds.cx - S / 2.0
 	var gz0: float = bounds.cz - S / 2.0
 	var cap := 110.0 if shore else 80.0
@@ -488,8 +586,6 @@ func _build_terrain() -> void:
 	var glow := U.hexc(0xd2501a)
 	var sand := U.hexc(0xc2a878)
 	var fields: bool = e.get("fields", false)
-	var has_river := t.river != null
-	var rw: float = t.river.w if has_river else 0.0
 	var bands := mini(16, vn)
 	var per := int(ceil(float(vn) / bands))
 	var hs := []
@@ -544,8 +640,10 @@ func _build_terrain() -> void:
 				else:
 					var v := U.clampf2(h / (amp if amp != 0.0 else 1.0) * 1.1 + (noise.noise(x * 0.02 + 40.0, z * 0.02, 2) - 0.5) * 0.5, 0.0, 1.0)
 					c = cL.lerp(cH, v)
-				if has_river and rd < rw + 9.0:
-					c = c.lerp(sand, U.clampf2(1.0 - (rd - rw) / 9.0, 0.0, 1.0) * 0.8)
+				if rd < 9.0:
+					c = c.lerp(sand, U.clampf2(1.0 - rd / 9.0, 0.0, 1.0) * 0.8)
+				if h < -0.35 and not shore:
+					c = c.lerp(sand.darkened(0.4), U.clampf2((-0.35 - h) / 1.6, 0.0, 1.0))
 				cc.append(c)
 		hs[b] = hh
 		cs[b] = cc
@@ -583,11 +681,24 @@ func _build_terrain() -> void:
 			var liq := mesh_node(lg.to_mesh(), lm)
 			liq.position = Vector3(bounds.cx, -0.6, bounds.cz)
 			add_child(liq)
-		else:
-			_build_sea(S)
 
 
-func water_material(shallow: Color, deep: Color, river: bool) -> ShaderMaterial:
+# Per-environment water look: sea palette [shallow, deep], glint strength and wave choppiness.
+const WATER_LOOK := {
+	"ISLAND": {"sea": [0x4de6d0, 0x07668a], "shimmer": 1.35, "chop": 1.0},
+	"GREECE": {"sea": [0x3cc8e0, 0x0a4a9a], "shimmer": 1.45, "chop": 0.8},
+	"VOLCANO": {"sea": [0x3a6a70, 0x0c2a33], "shimmer": 0.55, "chop": 1.3},
+	"WETLANDS": {"sea": [0x5a8a6a, 0x1c3f3a], "shimmer": 0.4, "chop": 0.5},
+	"HARBOR": {"sea": [0x4aa0a8, 0x16445a], "shimmer": 0.8, "chop": 1.1},
+	"CANYON": {"shimmer": 0.8, "chop": 0.9},
+	"ALPINE": {"shimmer": 1.3, "chop": 1.0},
+	"GROVE": {"shimmer": 0.5, "chop": 0.6},
+	"COUNTRY": {"shimmer": 0.9, "chop": 0.8},
+	"TOWN": {"shimmer": 0.7, "chop": 0.7},
+}
+
+
+func water_material(shallow: Color, deep: Color, r_shallow: Color, r_deep: Color) -> ShaderMaterial:
 	var dark: bool = e.get("dark", false)
 	var dk := 0.32 if dark else 1.0
 	var sky := U.hexc(e.fog).lerp(U.hexc(0x1a2350 if dark else 0x8ac4f0), 0.5)
@@ -596,7 +707,8 @@ func water_material(shallow: Color, deep: Color, river: bool) -> ShaderMaterial:
 	m.render_priority = 2
 	m.set_shader_parameter("noise_tex", Tex.noise())
 	m.set_shader_parameter("rip", ripples)
-	m.set_shader_parameter("river", 1.0 if river else 0.0)
+	m.set_shader_parameter("r_shallow", Mats.v3(r_shallow * dk))
+	m.set_shader_parameter("r_deep", Mats.v3(r_deep * dk))
 	m.set_shader_parameter("shallow", Mats.v3(shallow * dk))
 	m.set_shader_parameter("deep", Mats.v3(deep * dk))
 	m.set_shader_parameter("foam_col", Mats.v3(U.hexc(0xf2fbff) * (0.55 if dark else 1.0)))
@@ -604,6 +716,9 @@ func water_material(shallow: Color, deep: Color, river: bool) -> ShaderMaterial:
 	var sd: Array = e.sunDir
 	m.set_shader_parameter("sun_dir", Vector3(sd[0], sd[1], sd[2]).normalized())
 	m.set_shader_parameter("sun_col", Mats.v3(U.hexc(e.sun) * (0.35 if dark else 1.0)))
+	var look: Dictionary = WATER_LOOK.get(t.env_key, {})
+	m.set_shader_parameter("shimmer", look.get("shimmer", 1.0))
+	m.set_shader_parameter("chop", look.get("chop", 1.0))
 	water_mats.append(m)
 	return m
 
@@ -615,7 +730,66 @@ func add_ripple(x: float, z: float, time: float) -> void:
 		m.set_shader_parameter("rip", ripples)
 
 
-func _water_mesh(pos: PackedVector3Array, depth: PackedFloat32Array, flow: PackedVector2Array, idx: PackedInt32Array) -> ArrayMesh:
+## One continuous water surface for sea, lakes and river, shaded from the terrain depth so they merge on their own.
+func _build_water() -> void:
+	var shore: bool = e.get("shore", false)
+	if e.get("lava", false) or float(e.get("amp", 0.0)) == 0.0 or not (shore or t.river != null or lakes.size() > 0):
+		return
+	var S: float = maxf(bounds.x1 - bounds.x0, bounds.z1 - bounds.z0) + 40.0
+	var step := _tstep
+	var seg := roundi((S * 1.35 if shore else S) / step)
+	var vn := seg + 1
+	var WS := seg * step
+	var x0: float = bounds.cx - WS / 2.0
+	var z0: float = bounds.cz - WS / 2.0
+	var half := S / 2.0
+	var dist := dist_field(x0, z0, step, vn, vn, 110.0 if shore else 80.0)
+	var has_river := t.river != null
+	var rw: float = t.river.w if has_river else 0.0
+	var bands := mini(16, vn)
+	var per := int(ceil(float(vn) / bands))
+	var res := []
+	res.resize(bands)
+	var job := func(b: int) -> void:
+		var out := PackedFloat32Array()
+		for iz in range(b * per, mini(vn, b * per + per)):
+			for ix in vn:
+				var x := x0 + ix * step
+				var z := z0 + iz * step
+				var outside: bool = shore and (absf(x - bounds.cx) > half or absf(z - bounds.cz) > half)
+				var depth := 7.0
+				if not outside:
+					depth = maxf(0.0, -0.5 - terrain_hr(x, z, dist[iz * vn + ix]).x)
+				var riv := 0.0
+				var fx := 0.0
+				var fz := 0.0
+				if has_river:
+					var rn := _river_near(x, z)
+					riv = 1.0 - U.smooth01((rn.x - rw) / 10.0)
+					var fw := (1.0 - U.smooth01((rn.x - rw * 0.8) / (rw * 0.2 + 4.0))) * (0.3 + 0.7 * U.clampf2(depth / 1.5, 0.0, 1.0))
+					fx = rn.y * fw
+					fz = rn.z * fw
+				out.append_array([depth, riv, fx, fz])
+		res[b] = out
+	_run_parallel(job, bands)
+	var pos := PackedVector3Array()
+	var dep := PackedVector2Array()
+	var fl := PackedVector2Array()
+	for b in bands:
+		var o: PackedFloat32Array = res[b]
+		for j in range(0, o.size(), 4):
+			var k := pos.size()
+			pos.append(Vector3(x0 + (k % vn) * step, 0.0, z0 + (k / vn) * step))
+			dep.append(Vector2(o[j], o[j + 1]))
+			fl.append(Vector2(o[j + 2], o[j + 3]))
+	var idx := PackedInt32Array()
+	for iz in seg:
+		for ix in seg:
+			var a := ix + vn * iz
+			var b2 := ix + vn * (iz + 1)
+			var c := ix + 1 + vn * (iz + 1)
+			var d := ix + 1 + vn * iz
+			idx.append_array([a, d, b2, b2, d, c])
 	var arr := []
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = pos
@@ -623,93 +797,24 @@ func _water_mesh(pos: PackedVector3Array, depth: PackedFloat32Array, flow: Packe
 	nrm.resize(pos.size())
 	nrm.fill(Vector3.UP)
 	arr[Mesh.ARRAY_NORMAL] = nrm
-	arr[Mesh.ARRAY_TEX_UV] = flow
-	var uv2 := PackedVector2Array()
-	uv2.resize(depth.size())
-	for i in depth.size():
-		uv2[i] = Vector2(depth[i], 0.0)
-	arr[Mesh.ARRAY_TEX_UV2] = uv2
+	arr[Mesh.ARRAY_TEX_UV] = fl
+	arr[Mesh.ARRAY_TEX_UV2] = dep
 	arr[Mesh.ARRAY_INDEX] = idx
-	var m := ArrayMesh.new()
-	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-	return m
-
-
-func _build_sea(S: float) -> void:
-	var WS := S * 1.35
-	var seg := 118
-	var vn := seg + 1
-	var step := WS / seg
-	var x0: float = bounds.cx - WS / 2.0
-	var z0: float = bounds.cz - WS / 2.0
-	var half := S / 2.0
-	var dist := dist_field(x0, z0, step, vn, vn, 110.0)
-	var pos := PackedVector3Array()
-	var dep := PackedFloat32Array()
-	var fl := PackedVector2Array()
-	for iz in vn:
-		for ix in vn:
-			var x := x0 + ix * step
-			var z := z0 + iz * step
-			var out: bool = absf(x - bounds.cx) > half or absf(z - bounds.cz) > half
-			pos.append(Vector3(x, 0.0, z))
-			dep.append(7.0 if out else maxf(0.0, -0.5 - terrain_hr(x, z, dist[iz * vn + ix]).x))
-			fl.append(Vector2(x, z))
-	var idx := PackedInt32Array()
-	for iz in seg:
-		for ix in seg:
-			var a := ix + vn * iz
-			var b := ix + vn * (iz + 1)
-			var c := ix + 1 + vn * (iz + 1)
-			var d := ix + 1 + vn * iz
-			idx.append_array([a, d, b, b, d, c])
-	var m := mesh_node(_water_mesh(pos, dep, fl, idx), water_material(U.hexc(0x48dccc), U.hexc(0x0a4f78), false))
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var rc := U.hexc(e.get("riverCol", 0x2f9fc0))
+	var rsh := rc.lerp(U.hexc(0x9ae8e0), 0.45)
+	var rdp := rc * 0.45
+	rdp.a = 1.0
+	var sea: Array = WATER_LOOK.get(t.env_key, {}).get("sea", [0x48dccc, 0x0a4f78])
+	var m: MeshInstance3D
+	if shore:
+		m = mesh_node(mesh, water_material(U.hexc(sea[0]), U.hexc(sea[1]), rsh, rdp))
+	else:
+		m = mesh_node(mesh, water_material(rsh, rdp, rsh, rdp))
 	m.position.y = -0.5
 	m.custom_aabb = AABB(Vector3(x0, -2, z0), Vector3(WS, 4, WS))
 	add_child(m)
-
-
-func _build_river() -> void:
-	var R = t.river
-	if R == null:
-		return
-	var rx: PackedFloat64Array = R.x
-	var ry: PackedFloat64Array = R.y
-	var n := rx.size()
-	var A := 6
-	var hw: float = R.w + 2.0
-	var pos := PackedVector3Array()
-	var dep := PackedFloat32Array()
-	var fl := PackedVector2Array()
-	var idx := PackedInt32Array()
-	var along := 0.0
-	for k in n:
-		var ka := maxi(0, k - 1)
-		var kb := mini(n - 1, k + 1)
-		var dx := rx[kb] - rx[ka]
-		var dz := ry[kb] - ry[ka]
-		var L := U.hypot(dx, dz)
-		if L == 0.0:
-			L = 1.0
-		var nx := -dz / L
-		var nz := dx / L
-		if k > 0:
-			along += U.hypot(rx[k] - rx[k - 1], ry[k] - ry[k - 1])
-		for j in A + 1:
-			var u := float(j) / A * 2.0 - 1.0
-			pos.append(Vector3(rx[k] + nx * hw * u, -0.42, ry[k] + nz * hw * u))
-			dep.append(maxf(0.0, 1.0 - u * u * 1.12) * 2.6)
-			fl.append(Vector2(along, u * hw))
-		if k < n - 1:
-			for j in A:
-				var q := k * (A + 1) + j
-				var r := q + A + 1
-				idx.append_array([q, q + 1, r, q + 1, r + 1, r])
-	var rc := U.hexc(e.get("riverCol", 0x2f9fc0))
-	var sh := rc.lerp(U.hexc(0x9ae8e0), 0.45)
-	var dp := rc * 0.45
-	dp.a = 1.0
-	add_child(mesh_node(_water_mesh(pos, dep, fl, idx), water_material(sh, dp, true)))
 
 
 func _build_road() -> void:

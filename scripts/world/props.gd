@@ -1388,7 +1388,7 @@ func town() -> void:
 				var x: float = t.px[i] + t.nx[i] * off * s
 				var z: float = t.pz[i] + t.nz[i] * off * s
 				var d := w.dist_to_track(x, z, off + 12.0)
-				if d < HW + 9.0 or (t.river != null and w._river_dist(x, z) < float(t.river.w) + 8.0):
+				if d < HW + 9.0 or w.water_near(x, z, 8.0):
 					continue
 				var y := w.terrain_h(x, z, d)
 				var r := R()
