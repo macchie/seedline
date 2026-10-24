@@ -56,6 +56,7 @@ var run_inputs: Array = []
 var snapshot = null
 var cd_t := 0.0
 var cd_last := 0
+var auto_next_t := -1.0
 var best = null
 var finish_t := 0.0
 var replay_t := 0.0
@@ -792,8 +793,13 @@ func restart(quick: bool) -> void:
 	if track == null:
 		return
 	ui.set_replay_mode(false)
+	auto_next_t = -1.0
 	ui.hide_finish()
 	ui.show_pause(false)
+	if quick:
+		ui.hide_intro()
+	else:
+		ui.show_intro(track.name)
 	place_car_at(0, 4)
 	car.boost_amt = CarSim.BOOST_START
 	for p in world.pads:
@@ -882,6 +888,8 @@ func resume() -> void:
 
 func to_menu() -> void:
 	state = "menu"
+	auto_next_t = -1.0
+	ui.hide_intro()
 	ui.set_replay_mode(false)
 	release_all_touch()
 	DisplayServer.screen_set_keep_on(false)
@@ -934,6 +942,8 @@ func finish_race(t: float) -> void:
 			dtxt = ("New best " if is_pb else "") + U.fmt_delta(t - prev_best)
 			dcol = Ui.FAST if t < prev_best else Ui.SLOW
 		ui.show_finish(track.name + " · " + track.seed, t, m, dtxt, dcol, minf(t, prev_best if prev_best != null else t), is_pb)
+		auto_next_t = 30.0
+		ui.set_next_countdown(30)
 		ui.set_finish_rank(run_info)
 		ui.set_finish_rival(rival_ghost_fleet.target_name(), rival_ghost_fleet.target_time(), t)
 		if last_pp is Dictionary:
@@ -1099,6 +1109,7 @@ func replay_track(seed: String, env_key: String) -> void:
 
 
 func _start_track_replay(seed: String, env_key: String) -> void:
+	auto_next_t = -1.0
 	load_track(seed, env_key)
 	_record_recent_track()
 	best = Store.get_value("best5." + track.seed, null)
@@ -1156,6 +1167,7 @@ func new_random_track() -> void:
 
 
 func next_track() -> void:
+	auto_next_t = -1.0
 	ui.hide_finish()
 	with_loading(func():
 		load_track(U.rand_seed_code())
@@ -1301,6 +1313,12 @@ func _process(delta: float) -> void:
 			run_start_boost_t = car.boost_t
 			run_start_boost_amt = car.boost_amt
 			run_start_turbo = car.turbo
+	if state == "finished" and auto_next_t > 0.0 and ui.finish_modal.visible and not ui.loading.visible:
+		auto_next_t -= dt
+		if auto_next_t <= 0.0:
+			next_track()
+		else:
+			ui.set_next_countdown(int(ceil(auto_next_t)))
 	if state == "replay":
 		_advance_replay(dt)
 	elif state == "race" or state == "finished":

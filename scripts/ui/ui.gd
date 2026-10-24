@@ -317,6 +317,11 @@ var f_delta: Label
 var f_best: VBoxContainer
 var f_fav: Label
 var toast_box: Glass
+var intro_box: Glass
+var intro_name: Label
+var intro_rows: VBoxContainer
+var intro_tw: Tween
+var f_next_lbl: Label
 var toast_lbl: Label
 var toast_tw: Tween
 var stats_lbl: Label
@@ -1957,6 +1962,7 @@ func _build_modals() -> void:
 	b2[0].pressed.connect(func(): game.toggle_fav())
 	var b3 := _cbtn("Next track", false)
 	b3[0].pressed.connect(func(): game.next_track())
+	f_next_lbl = b3[1]
 	row2.add_child(b2[0])
 	row2.add_child(b3[0])
 	fg.add_child(row2)
@@ -3113,6 +3119,20 @@ func _build_overlays() -> void:
 	toast_box.add_child(toast_lbl)
 	toast_box.modulate.a = 0.0
 	add_child(toast_box)
+	intro_box = glass(PANEL, LINE, 14.0, 2.5)
+	intro_box.pad(22, 14, 22, 16)
+	var ib := vbox(4)
+	intro_name = L("", "display", 800, 24, FG, true, 0.0, true)
+	intro_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ib.add_child(intro_name)
+	intro_rows = vbox(2)
+	intro_rows.custom_minimum_size = Vector2(230, 0)
+	ib.add_child(intro_rows)
+	intro_box.add_child(ib)
+	intro_box.modulate.a = 0.0
+	intro_box.visible = false
+	intro_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(intro_box)
 	stats_lbl = L("", "mono", 600, 11, Color.WHITE)
 	var sbg := StyleBoxFlat.new()
 	sbg.bg_color = Color(0, 0, 0, 0.45)
@@ -3659,6 +3679,8 @@ func render_personal_best(box: VBoxContainer, pb) -> void:
 func render_leaderboard(info) -> void:
 	_lb_info = info
 	_update_lb_summary(info)
+	if intro_box and intro_box.visible:
+		_fill_intro()
 	if lb_box == null:
 		return
 	for c in lb_box.get_children():
@@ -4672,6 +4694,59 @@ func count_flash(txt: String, go: bool) -> void:
 	a.tween_property(count_lbl, "modulate:a", 0.0, 0.525)
 
 
+func _fill_intro() -> void:
+	for c in intro_rows.get_children():
+		intro_rows.remove_child(c)
+		c.queue_free()
+	var top = _lb_info.get("top", []) if _lb_info is Dictionary else []
+	if not (top is Array):
+		return
+	for i in mini(3, top.size()):
+		var r = top[i]
+		var h := hbox(10)
+		var rk := L("%d" % int(r.rank), "mono", 700, 12, accent)
+		rk.custom_minimum_size = Vector2(20, 0)
+		h.add_child(rk)
+		var n := L(str(r.name), "body", 600, 13, FG, false, 0.06, true)
+		n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		n.clip_text = true
+		h.add_child(n)
+		h.add_child(L(U.fmt(float(r.time_ms) / 1000.0), "mono", 700, 13, FG))
+		intro_rows.add_child(h)
+	_place_intro()
+
+
+func _place_intro() -> void:
+	intro_box.size = intro_box.get_combined_minimum_size()
+	intro_box.position = Vector2((size.x - intro_box.size.x) / 2.0, safe.t + 70.0)
+
+
+## Track name and the top three racers, shown over the starting countdown.
+func show_intro(track_name: String) -> void:
+	intro_name.text = track_name
+	intro_box.visible = true
+	_fill_intro()
+	_place_intro()
+	if intro_tw:
+		intro_tw.kill()
+	intro_box.modulate.a = 0.0
+	intro_tw = create_tween()
+	intro_tw.tween_property(intro_box, "modulate:a", 1.0, 0.3)
+	intro_tw.tween_interval(4.2)
+	intro_tw.tween_property(intro_box, "modulate:a", 0.0, 0.5)
+	intro_tw.tween_callback(func(): intro_box.visible = false)
+
+
+func hide_intro() -> void:
+	if intro_tw:
+		intro_tw.kill()
+	intro_box.visible = false
+
+
+func set_next_countdown(secs: int) -> void:
+	f_next_lbl.text = "Next track · %ds" % secs if secs > 0 else "Next track"
+
+
 func toast(s: String) -> void:
 	toast_lbl.text = s
 	toast_box.size = toast_box.get_combined_minimum_size()
@@ -4714,6 +4789,7 @@ func _rise(card: Control) -> void:
 
 func hide_finish() -> void:
 	finish_modal.visible = false
+	set_next_countdown(0)
 	_set_stick_direction(Vector2i.ZERO)
 	var focus := _focus_owner()
 	if focus and finish_modal.is_ancestor_of(focus):
