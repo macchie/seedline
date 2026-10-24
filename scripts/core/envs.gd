@@ -1,9 +1,9 @@
 class_name Envs
-## The nine worlds. Values are copied verbatim from the web build (colours as 0xRRGGBB display values).
+## The twelve worlds. Colours are 0xRRGGBB display values.
 
 const NIGHT_ENABLED := false  # night mode is built but switched off for now
 
-const KEYS := ["CANYON", "ALPINE", "NEON", "GROVE", "ISLAND", "COUNTRY", "VOLCANO", "GREECE", "TOWN"]
+const KEYS := ["CANYON", "ALPINE", "NEON", "GROVE", "ISLAND", "COUNTRY", "VOLCANO", "GREECE", "TOWN", "WETLANDS", "HARBOR", "SALTFLATS"]
 
 const DATA := {
 	"CANYON": {"name": "Canyon", "accent": "#ff9a3c", "onAccent": "#160b02", "fog": 0xe8ad7c, "fogNear": 130.0, "fogFar": 380.0, "hemiS": 0xffe0bd, "hemiG": 0x8a4a2a, "hemiI": 0.85, "sun": 0xffe6c4, "sunI": 1.2, "sunDir": [-0.8, 1.0, 0.55],
@@ -42,6 +42,18 @@ const DATA := {
 		"gLow": 0x6f9e4b, "gHigh": 0x5c8a40, "shoulder": 0xcfc8bc, "road": "#454850", "edge": "rgba(250,246,236,.9)", "dash": "rgba(250,246,236,.8)", "curbA": 0xd8453a, "curbB": 0xf6f2e8,
 		"amp": 4.0, "weather": "none", "grip": 1.0, "smoke": 0xd9d2c8, "lights": 0.45, "grade": {"tint": [1.03, 0.99, 0.95], "sat": 1.02, "cloud": 0.24}, "birds": [10, 0x5a5d66],
 		"river": true, "riverCol": 0x3f8aa8, "words": [["Market", "Bell", "Cobble", "Harbor", "Clock", "Bakery", "Maple", "Lantern"], ["Street", "Square", "Row", "Corner", "Quarter", "Lane", "Parade", "Circus"]]},
+	"WETLANDS": {"name": "Wetlands", "accent": "#76d6a0", "onAccent": "#07170f", "fog": 0x9bb4a7, "fogNear": 80.0, "fogFar": 245.0, "hemiS": 0xd7e8dc, "hemiG": 0x354d40, "hemiI": 0.82, "sun": 0xffe3b5, "sunI": 0.82, "sunDir": [-0.4, 1.0, 0.2],
+		"gLow": 0x596f46, "gHigh": 0x344b38, "shoulder": 0x77745a, "road": "#343c3a", "edge": "rgba(219,232,215,.9)", "dash": "rgba(224,212,150,.75)", "curbA": 0x6d9472, "curbB": 0xd9ddc9,
+		"amp": 1.0, "shore": true, "deep": 0x173e43, "river": true, "riverCol": 0x315e59, "weather": "rain", "grip": 0.91, "smoke": 0xc1d0c4, "lights": 0.18, "grade": {"tint": [0.95, 1.02, 0.94], "sat": 0.92, "cloud": 0.55}, "birds": [8, 0xc6d2c5],
+		"words": [["Cypress", "Mire", "Heron", "Moss", "Willow", "Blackwater", "Reed", "Gator"], ["Bend", "Marsh", "Run", "Slough", "Landing", "Fen", "Reach", "Bayou"]]},
+	"HARBOR": {"name": "Harbor", "accent": "#66c8df", "onAccent": "#06151a", "fog": 0xa6c5cf, "fogNear": 115.0, "fogFar": 350.0, "hemiS": 0xe5f0f2, "hemiG": 0x536d75, "hemiI": 0.9, "sun": 0xffe4c2, "sunI": 0.92, "sunDir": [-0.7, 1.0, 0.35],
+		"gLow": 0x737c79, "gHigh": 0x596c70, "shoulder": 0x8f8778, "road": "#3d4549", "edge": "rgba(231,239,233,.9)", "dash": "rgba(248,205,112,.8)", "curbA": 0xd65c45, "curbB": 0xe9e3d4,
+		"amp": 1.0, "shore": true, "deep": 0x174858, "weather": "drizzle", "grip": 0.94, "smoke": 0xc5cecc, "lights": 0.35, "grade": {"tint": [0.97, 1.01, 1.03], "sat": 0.96, "cloud": 0.38}, "birds": [10, 0xe3e7df],
+		"words": [["Cargo", "Beacon", "Anchor", "Trawler", "Quay", "Signal", "Foghorn", "Freight"], ["Terminal", "Docks", "Pier", "Channel", "Yard", "Breakwater", "Jetty", "Port"]]},
+	"SALTFLATS": {"name": "Salt Flats", "accent": "#e8d8a2", "onAccent": "#211b0b", "fog": 0xe5ddca, "fogNear": 155.0, "fogFar": 460.0, "hemiS": 0xfff8e9, "hemiG": 0x8e8877, "hemiI": 0.86, "sun": 0xfff0cf, "sunI": 1.28, "sunDir": [-0.55, 1.0, 0.25],
+		"gLow": 0xd9d0bc, "gHigh": 0xf1e9d6, "shoulder": 0xbeb49e, "road": "#555451", "edge": "rgba(255,250,235,.95)", "dash": "rgba(255,224,150,.8)", "curbA": 0xc4a66a, "curbB": 0xf5eedc,
+		"amp": 0.35, "salt": true, "weather": "dust", "grip": 0.99, "smoke": 0xd8cfbd, "grade": {"tint": [1.05, 1.01, 0.94], "sat": 0.72, "cloud": 0.08}, "birds": [3, 0x77746d],
+		"words": [["White", "Mirage", "Alkali", "Prism", "Dry", "Solar", "Glass", "Brine"], ["Pan", "Horizon", "Basin", "Mirror", "Expanse", "Crust", "Reach", "Run"]]},
 }
 
 

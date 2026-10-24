@@ -1,6 +1,6 @@
 class_name Props
 extends RefCounted
-## Scenery for each of the nine places (port of buildProps). Random draws happen in exactly the web build's order.
+## Scenery for each place (port of buildProps). Random draws happen in exactly the web build's order.
 
 const HW := U.HW
 const TAU := U.TAU
@@ -556,7 +556,7 @@ static func _sign_frame(c: Color) -> ImageTexture:
 	return t2
 
 
-# ------------------------------------------------------------------ the nine places
+# ------------------------------------------------------------------ environment scenery
 
 func build() -> void:
 	match t.env_key:
@@ -572,6 +572,12 @@ func build() -> void:
 			country()
 		"VOLCANO":
 			volcano()
+		"WETLANDS":
+			wetlands()
+		"HARBOR":
+			harbor()
+		"SALTFLATS":
+			saltflats()
 		"GREECE":
 			greece()
 		"TOWN":
@@ -659,6 +665,134 @@ func canyon() -> void:
 			m.position = Vector3(st.x, 0.9 + absf(sin(tt * 3.2 + ph)) * 1.4, st.z + sin(tt * 0.6 + ph) * 3.0)
 			m.rotation.z -= dt * sp / 1.1)
 	balloons(3)
+	birds(e.birds)
+
+
+func wetlands() -> void:
+	var trees := land(around(300, HW + 8.0, 95.0, 0.3))
+	var trunk := Geo.cylinder(0.35, 0.7, 1, 7).translate(0, 0.5, 0)
+	var crown := Geo.cone(2.5, 7.5, 7).translate(0, 5.3, 0)
+	var crown_top := Geo.cone(1.7, 5.0, 7).translate(0, 9.0, 0)
+	w.inst(trunk, T({"color": 0x554333}), trees, func(p, d, i):
+		var s: float = 0.8 + p.s * 0.8
+		d.position = Vector3(p.x, p.y, p.z)
+		d.scale = Vector3(s, s * 1.5, s)
+		d.rotation.y = p.a
+		obst(p, 1.1 * s))
+	w.inst(crown, anim({}, "sway", 0.012), trees, func(p, d, i):
+		var s: float = 0.8 + p.s * 0.8
+		d.position = Vector3(p.x, p.y, p.z)
+		d.scale = Vector3(s, s, s)
+		d.rotation.y = p.a
+		return tint(0x365b43, 0.8))
+	w.inst(crown_top, anim({}, "sway", 0.014), trees, func(p, d, i):
+		var s: float = 0.8 + p.s * 0.8
+		d.position = Vector3(p.x, p.y + 5.0 * s, p.z)
+		d.scale = Vector3(s, s, s)
+		d.rotation.y = p.a
+		return tint(0x496c4b, 0.8))
+	var reeds := land(around(260, HW + 5.0, 46.0, 0.05))
+	w.inst(Geo.cylinder(0.08, 0.14, 1, 5).translate(0, 0.5, 0), anim({"color": 0x8c9860}, "sway", 0.04), reeds, func(p, d, i):
+		var h: float = 1.8 + p.s * 2.8
+		d.position = Vector3(p.x, p.y, p.z)
+		d.scale = Vector3(1, h, 1)
+		d.rotation.z = (p.r - 0.5) * 0.16
+		return tint(0x87905b, 0.65), false)
+	rocks(land(around(100, HW + 6.0, 72.0, 0.35)), 0x625e4c, 0.8)
+	var cabins: Array = []
+	for p in slice(spaced(land(around(32, HW + 18.0, 72.0, 0.2)), 28.0, trees, 8.0), 7):
+		cabins.append(house(p, {"wc": col(0x78634b), "rc": col(0x3e4c43), "hw": 5.5, "hd": 5.0, "hh": 3.2, "rh": 2.6, "chim": false}))
+	houses(cabins)
+	fireflies(190, 0xd8e58a)
+	birds(e.birds)
+
+
+func harbor() -> void:
+	var buildings := land(slice(spaced(around(70, HW + 22.0, 125.0, 0.3), 15.0), 46))
+	var container_colors := [0xb64f3b, 0x476b78, 0xb88c45, 0x4d6352, 0x74757a]
+	w.inst(boxG, T(), buildings, func(p, d, i):
+		var h: float = 5.0 + p.s * 5.0
+		d.position = Vector3(p.x, p.y, p.z)
+		d.rotation.y = p.a
+		d.scale = Vector3(9.0 + p.r * 4.0, h, 6.0 + p.s * 2.0)
+		if p.d < HW + 55.0:
+			w.add_obstacle(p.x, p.z, 5.0)
+		return tint(0x8c8272, 0.5))
+	var stacks: Array = []
+	for p in slice(spaced(land(around(72, HW + 20.0, 110.0, 0.2)), 10.0, buildings, 12.0), 56):
+		var base_h: float = 2.6
+		for row in range(2 if p.r > 0.42 else 1):
+			stacks.append({"x": p.x, "y": p.y + row * base_h, "z": p.z, "a": p.a, "c": pick(container_colors), "h": base_h})
+	w.inst(boxG, T(), stacks, func(p, d, i):
+		d.position = Vector3(p.x, p.y + p.h * 0.5, p.z)
+		d.rotation.y = p.a
+		d.scale = Vector3(8.0, p.h, 2.8)
+		if p.y < 3.0 and w.dist_to_track(p.x, p.z, 60.0) < HW + 48.0:
+			w.add_obstacle(p.x, p.z, 2.3)
+		return tint(p.c, 0.25))
+	var cranes := slice(spaced(land(around(14, HW + 45.0, 135.0, 0.4)), 24.0, buildings, 20.0), 5)
+	for p in cranes:
+		var g := group(p.x, p.y, p.z)
+		var steel := T({"color": 0x48585b})
+		for side: float in [-1.0, 1.0]:
+			var leg := mesh(boxG, steel, true)
+			leg.scale = Vector3(0.8, 22.0, 0.8)
+			leg.position = Vector3(side * 7.0, 0.0, 0.0)
+			g.add_child(leg)
+		var beam := mesh(boxG, steel, true)
+		beam.scale = Vector3(18.0, 0.9, 1.0)
+		beam.position.y = 22.0
+		g.add_child(beam)
+		var boom := mesh(boxG, T({"color": 0xd4a34e}), true)
+		boom.scale = Vector3(1.0, 0.7, 23.0)
+		boom.position = Vector3(0.0, 21.0, -11.0)
+		g.add_child(boom)
+		var cable := mesh(Geo.cylinder(0.08, 0.08, 1.0, 5), T({"color": 0x242d30}))
+		cable.position = Vector3(0.0, 14.0, -18.0)
+		cable.scale.y = 12.0
+		g.add_child(cable)
+		obst(p, 2.0)
+	# Mooring bollards and dock lamps give the road edge a working-pier scale.
+	var bollards := around(42, HW + 5.0, 22.0, 0.0)
+	w.inst(Geo.cylinder(0.42, 0.55, 0.9, 8).translate(0, 0.45, 0), T({"color": 0x3a4242}), bollards, func(p, d, i):
+		d.position = Vector3(p.x, p.y, p.z)
+		d.rotation.y = p.a
+		obst(p, 0.55))
+	var tanks := slice(spaced(land(around(12, HW + 34.0, 118.0, 0.4)), 18.0, buildings, 15.0), 5)
+	w.inst(Geo.cylinder(5.0, 5.0, 9.0, 16).translate(0, 4.5, 0), T({"color": 0x9a9c92}), tanks, func(p, d, i):
+		d.position = Vector3(p.x, p.y, p.z)
+		d.scalar(0.8 + p.s * 0.4)
+		d.rotation.y = p.a
+		obst(p, 4.0))
+	birds(e.birds)
+
+
+func saltflats() -> void:
+	# Low crystalline ridges and scattered mineral outcrops break up the broad, flat horizon.
+	var crystals := around(220, HW + 12.0, 135.0, 0.55)
+	w.inst(Geo.cone(1.0, 1.0, 5).translate(0, 0.5, 0), T(), crystals, func(p, d, i):
+		var s: float = 0.6 + p.s * 1.2
+		d.position = Vector3(p.x, p.y, p.z)
+		d.scale = Vector3(s, 0.35 + p.r * 1.1, s)
+		d.rotation.y = p.a
+		return tint(0xe6dec9, 0.35), false)
+	var outcrops := around(80, HW + 8.0, 92.0, 0.35)
+	w.inst(Geo.icosahedron(1.0, 0), T(), outcrops, func(p, d, i):
+		d.position = Vector3(p.x, p.y + 0.3, p.z)
+		d.scale = Vector3(1.4 + p.s * 2.2, 0.35 + p.r * 0.9, 1.2 + p.s * 1.8)
+		d.rotation.y = p.a
+		return tint(0xb9ae94, 0.5), false)
+	rocks(slice(spaced(around(60, HW + 45.0, 175.0, 0.6), 25.0), 22), 0x8b806c, 0.45)
+	# Sparse survey markers make the immense pale landscape legible at speed.
+	var markers := slice(spaced(around(26, HW + 35.0, 115.0, 0.35), 24.0), 10)
+	w.inst(Geo.cylinder(0.18, 0.22, 4.5, 6).translate(0, 2.25, 0), T({"color": 0x756b5a}), markers, func(p, d, i):
+		d.position = Vector3(p.x, p.y, p.z)
+		d.rotation.y = p.a
+		w.add_obstacle(p.x, p.z, 0.4))
+	w.inst(Geo.box(1.0, 0.8, 0.12).translate(0, 0.4, 0), T({"color": 0xe2a24b}), markers, func(p, d, i):
+		d.position = Vector3(p.x, p.y + 3.4, p.z)
+		d.rotation.y = p.a
+		return tint(0xe2a24b, 0.2), false)
 	birds(e.birds)
 
 

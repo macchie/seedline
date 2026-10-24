@@ -753,7 +753,7 @@ local function record_progression(uid, run, new_track, matched_events)
     if p.tracks >= 10 then unlock("explorer_10") end
     if p.tracks >= 50 then unlock("explorer_50") end
     if p.tracks >= 100 then unlock("explorer_100") end
-    if environment_count >= 9 then unlock("environment_tour") end
+    if environment_count >= 12 then unlock("environment_tour") end
     if medals.any >= 1 then unlock("medal_first") end
     if medals.gold >= 10 then unlock("gold_10") end
     if medals.author >= 1 then unlock("author_first") end

@@ -40,7 +40,7 @@ const ACHIEVEMENTS := [
 	{"id": "explorer_10", "title": "Explorer", "icon": "dice", "stat": "tracks", "target": 10},
 	{"id": "explorer_50", "title": "Pathfinder", "icon": "dice", "stat": "tracks", "target": 50},
 	{"id": "explorer_100", "title": "Cartographer", "icon": "dice", "stat": "tracks", "target": 100},
-	{"id": "environment_tour", "title": "Grand Tour", "icon": "star", "stat": "environments", "target": 9},
+	{"id": "environment_tour", "title": "Grand Tour", "icon": "star", "stat": "environments", "target": 12},
 	{"id": "medal_first", "title": "First Podium", "icon": "trophy", "stat": "medals_any", "target": 1},
 	{"id": "gold_10", "title": "Gold Rush", "icon": "trophy", "stat": "medals_gold", "target": 10},
 	{"id": "author_first", "title": "Author's Pace", "icon": "trophy", "stat": "medals_author", "target": 1},

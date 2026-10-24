@@ -659,7 +659,7 @@ static func generate(seed: String, env_key: String) -> TrackData:
 	var valid := 0
 	var r := rng.next()
 	var fam := "loop"
-	var city := env_key == "TOWN" or env_key == "NEON"
+	var city := env_key == "TOWN" or env_key == "NEON" or env_key == "HARBOR"
 	if city and rng.next() < 0.45:
 		fam = "street"
 	else:

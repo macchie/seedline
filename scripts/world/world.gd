@@ -531,6 +531,12 @@ func _build_terrain() -> void:
 							c = c.lerp(foam, 0.55)
 					else:
 						c = cL.lerp(cH, U.clampf2((h - 0.25) / 1.2 + (nn - 0.5) * 0.6, 0.0, 1.0))
+				elif e.get("salt", false):
+					var salt_x := int(floor((x + nn * 5.0) / 18.0))
+					var salt_z := int(floor((z + nn * 5.0) / 18.0))
+					var cell := SeedRng.hash_str(str(salt_x) + "," + str(salt_z)) % 3
+					var salt_v := clampf(nn * 0.45 + float(cell) * 0.18, 0.0, 1.0)
+					c = cL.lerp(cH, salt_v)
 				elif fields and d > HW + 12.0:
 					var fx := int(floor((x + noise.noise(x * 0.01, z * 0.01, 2) * 30.0) / 46.0))
 					var fz := int(floor((z + noise.noise(z * 0.01 + 9.0, x * 0.01, 2) * 30.0) / 46.0))

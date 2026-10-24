@@ -5,7 +5,7 @@ generates a repeatable circuit. Race it, record a best, then share the seed and 
 
 ## Current game
 
-- **Seed-built tracks:** nine environments, generated scenery, checkpoints, weather, terrain, boost
+- **Seed-built tracks:** twelve environments, generated scenery, checkpoints, weather, terrain, boost
   pads, and a cached minimap preview for each saved track.
 - **Precision driving:** fixed 120 Hz car simulation, three-lap races, drift and boost, track
   boundaries, and ordered anti-cut gates.
