@@ -9,8 +9,6 @@ const BR_F := 10
 const BR_R := 26
 const FAMILIES := [["loop", 0.15], ["eight", 0.13], ["snake", 0.17], ["spiral", 0.12], ["flower", 0.13], ["street", 0.17], ["switchback", 0.13]]
 
-static var last_k: int = 0
-
 
 class Poly:
 	var x := PackedFloat64Array()
@@ -511,8 +509,31 @@ static func dist_poly(rx: PackedFloat64Array, ry: PackedFloat64Array, x: float, 
 		if d < best:
 			best = d
 			bi = k
-	last_k = bi
 	return sqrt(best)
+
+
+## Index of the polyline segment nearest to (x, z). Split out from dist_poly so the generator keeps
+## no shared mutable state and can run on worker threads for parallel track-preview generation.
+static func nearest_seg(rx: PackedFloat64Array, ry: PackedFloat64Array, x: float, z: float) -> int:
+	var best := 1e18
+	var bi := 0
+	var m := rx.size()
+	for k in m - 1:
+		var ax := rx[k]
+		var az := ry[k]
+		var dx := rx[k + 1] - ax
+		var dz := ry[k + 1] - az
+		var L2 := dx * dx + dz * dz
+		if L2 == 0.0:
+			L2 = 1.0
+		var u := U.clampf2(((x - ax) * dx + (z - az) * dz) / L2, 0.0, 1.0)
+		var ex := ax + dx * u - x
+		var ez := az + dz * u - z
+		var d := ex * ex + ez * ez
+		if d < best:
+			best = d
+			bi = k
+	return bi
 
 
 ## A meandering river across the map; where the road meets it a short bridge lifts the road over the water.
@@ -576,8 +597,7 @@ static func make_river(t: TrackData, rng: SeedRng):
 				if d < bd:
 					bd = d
 					bi = i % N
-			dist_poly(rx, ry, t.px[bi], t.pz[bi])
-			var k := last_k
+			var k := nearest_seg(rx, ry, t.px[bi], t.pz[bi])
 			var sx := rx[k + 1] - rx[k]
 			var sz := ry[k + 1] - ry[k]
 			var sl := sqrt(sx * sx + sz * sz)

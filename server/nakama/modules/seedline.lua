@@ -67,6 +67,21 @@ local SEASON = {
   score_scale = PP.score_scale,
 }
 
+-- Medal tiers mirror the client's generator pars (author is the fastest). A run reports the medal it
+-- earned; the server only ever keeps a track's *best* tier, so medal achievements can't be inflated
+-- by re-running a seed slowly. Medals are cosmetic self-progress and never touch PP or leaderboards.
+local MEDAL_RANK = { bronze = 1, silver = 2, gold = 3, author = 4 }
+
+local function medal_counts(medals)
+  local any, gold, author = 0, 0, 0
+  for _, rank in pairs(medals or {}) do
+    if rank >= 1 then any = any + 1 end
+    if rank >= 3 then gold = gold + 1 end
+    if rank >= 4 then author = author + 1 end
+  end
+  return { any = any, gold = gold, author = author }
+end
+
 local SYSTEM = "00000000-0000-0000-0000-000000000000"
 local PERM_NONE, PERM_PUBLIC = 0, 2
 
@@ -274,6 +289,8 @@ local function validate_run(p)
     end
   end
 
+  local medal = type(p.medal) == "string" and MEDAL_RANK[p.medal] ~= nil and p.medal or nil
+
   return {
     lb_id = lb_id,
     seed = p.seed,
@@ -283,6 +300,7 @@ local function validate_run(p)
     length_m = p.length_m,
     version = type(p.version) == "string" and p.version:sub(1, 32) or "",
     ghost = ghost,
+    medal = medal,
   }
 end
 
@@ -704,7 +722,7 @@ end
 
 local function record_progression(uid, run, new_track, matched_events)
   local _, doc, result = update_doc("progression", "achievements", uid, PERM_NONE, function(current)
-    local p = current or { runs = 0, tracks = 0, environments = {}, event_periods = {}, event_count = 0, unlocked = {} }
+    local p = current or { runs = 0, tracks = 0, environments = {}, event_periods = {}, event_count = 0, unlocked = {}, medals = {} }
     p.runs = (p.runs or 0) + 1
     p.tracks = (p.tracks or 0) + (new_track and 1 or 0)
     p.environments = p.environments or {}
@@ -712,6 +730,14 @@ local function record_progression(uid, run, new_track, matched_events)
     p.event_periods = p.event_periods or {}
     p.event_count = p.event_count or 0
     p.unlocked = p.unlocked or {}
+    p.medals = p.medals or {}
+
+    -- keep only the best medal tier ever earned on each track
+    local rank = run.medal and MEDAL_RANK[run.medal] or 0
+    if rank > (p.medals[run.lb_id] or 0) then
+      p.medals[run.lb_id] = rank
+    end
+    local medals = medal_counts(p.medals)
 
     local fresh, event_rewards = {}, {}
     local function unlock(id)
@@ -723,9 +749,14 @@ local function record_progression(uid, run, new_track, matched_events)
     local environment_count = 0
     for _ in pairs(p.environments) do environment_count = environment_count + 1 end
     if p.runs >= 1 then unlock("first_finish") end
+    if p.runs >= 100 then unlock("century") end
     if p.tracks >= 10 then unlock("explorer_10") end
     if p.tracks >= 50 then unlock("explorer_50") end
+    if p.tracks >= 100 then unlock("explorer_100") end
     if environment_count >= 9 then unlock("environment_tour") end
+    if medals.any >= 1 then unlock("medal_first") end
+    if medals.gold >= 10 then unlock("gold_10") end
+    if medals.author >= 1 then unlock("author_first") end
 
     for _, event in ipairs(matched_events or {}) do
       if p.event_periods[event.kind] ~= event.period then
@@ -745,6 +776,7 @@ local function record_progression(uid, run, new_track, matched_events)
     tracks = doc.tracks or 0,
     environments = doc.environments or {},
     event_count = doc.event_count or 0,
+    medals = medal_counts(doc.medals),
     events = result.events or {},
   }
 end
@@ -950,6 +982,7 @@ local function progression_view(uid)
     tracks = doc.tracks or 0,
     environments = doc.environments or {},
     event_count = doc.event_count or 0,
+    medals = medal_counts(doc.medals),
     season = { period = period, global_pp = season_doc.global or 0.0 },
   }
 end

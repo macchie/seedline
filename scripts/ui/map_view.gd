@@ -21,6 +21,7 @@ var preview := false        # menu preview draws a bigger dot
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clip_contents = true
 
 
 func map(x: float, z: float) -> Vector2:
@@ -61,8 +62,9 @@ func set_track(track: TrackData, acc: Color) -> void:
 func _draw() -> void:
 	if t == null:
 		return
-	var k := size.x / S
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2(k, k))
+	# scale by the shorter side and centre, so a non-square control never spills the map outside it
+	var k := minf(size.x, size.y) / S
+	draw_set_transform((size - Vector2(S, S) * k) / 2.0, 0.0, Vector2(k, k))
 	draw_polyline(line_pts, Color(1, 1, 1, 0.18), 10.0, true)
 	draw_polyline(line_pts, Color(1, 1, 1, 0.75), 3.0, true)
 	for p in cp_pts:

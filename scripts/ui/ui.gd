@@ -18,6 +18,37 @@ const MEDAL_COL := {"author": Color("#3ddc84"), "gold": Color("#f5c542"), "silve
 const SWATCHES := ["#e8402c", "#ff8a1f", "#f2c230", "#2ec27e", "#1fb6c9", "#1f6ff1", "#7a4dff", "#f04fb3", "#eef1f5"]
 const BOOST_SWATCHES := ["#38e8ff", "#3fb4ff", "#ff9a3c", "#d25bff", "#2ec27e", "#ff4f78", "#f2c230", "#eef1f5"]
 
+# Named driver tiers mapped from the global PP rating (ascending floors). Tune the floors as real
+# player data lands; the names and colours are what the player actually sees on the finish card and
+# account screen.
+const RANKS := [
+	{"pp": 0, "name": "Rookie", "col": Color("#8e97a7")},
+	{"pp": 300, "name": "Driver", "col": Color("#cf8752")},
+	{"pp": 800, "name": "Pro", "col": Color("#c9cfd8")},
+	{"pp": 1500, "name": "Ace", "col": Color("#3ddc84")},
+	{"pp": 2400, "name": "Veteran", "col": Color("#4fb2ff")},
+	{"pp": 3500, "name": "Master", "col": Color("#7a4dff")},
+	{"pp": 5000, "name": "Grandmaster", "col": Color("#f5c542")},
+]
+
+# Achievement catalogue (client view): id → display + how to read progress out of the progression
+# payload. `stat` keys: runs, tracks, environments, event_count, medals_any/gold/author. A missing
+# stat means the badge has no measurable progress (binary unlock, e.g. event podium).
+const ACHIEVEMENTS := [
+	{"id": "first_finish", "title": "First Finish", "icon": "play", "stat": "runs", "target": 1},
+	{"id": "century", "title": "Century", "icon": "play", "stat": "runs", "target": 100},
+	{"id": "explorer_10", "title": "Explorer", "icon": "dice", "stat": "tracks", "target": 10},
+	{"id": "explorer_50", "title": "Pathfinder", "icon": "dice", "stat": "tracks", "target": 50},
+	{"id": "explorer_100", "title": "Cartographer", "icon": "dice", "stat": "tracks", "target": 100},
+	{"id": "environment_tour", "title": "Grand Tour", "icon": "star", "stat": "environments", "target": 9},
+	{"id": "medal_first", "title": "First Podium", "icon": "trophy", "stat": "medals_any", "target": 1},
+	{"id": "gold_10", "title": "Gold Rush", "icon": "trophy", "stat": "medals_gold", "target": 10},
+	{"id": "author_first", "title": "Author's Pace", "icon": "trophy", "stat": "medals_author", "target": 1},
+	{"id": "event_first", "title": "Challenge Debut", "icon": "star", "stat": "event_count", "target": 1},
+	{"id": "event_regular", "title": "Event Regular", "icon": "star", "stat": "event_count", "target": 10},
+	{"id": "event_podium", "title": "Event Podium", "icon": "trophy", "target": 1},
+]
+
 var game                      # Main
 var accent := Color("#ff9a3c")
 var on_accent := Color("#140b02")
@@ -133,6 +164,12 @@ var acct_signout: Tap
 var acct_who: Label
 var acct_mail_lbl: Label
 var progression_lbl: Label
+var progression_grid: GridContainer
+var rank_stat: Label
+var ach_modal: Control
+var ach_box: VBoxContainer
+var ach_scroll: ScrollContainer
+var btn_trophy: Tap
 var acct_opt_status: Label
 var acct_opt_btn: Tap
 var acct_opt_lbl: Label
@@ -141,6 +178,8 @@ var f_rank: Label
 var f_rival: Label
 var f_event: Label
 var f_pp: Label
+var f_rankup: Label
+var f_badge: Label
 var pp_stat: Label           # global PP shown on the account screen
 var season_stat: Label
 var _global_pp := 0.0
@@ -171,7 +210,7 @@ var fav_preview_views: Array[Dictionary] = []
 var recent_preview_views: Array[Dictionary] = []
 var fav_preview_revision := 0
 var fav_preview_task_running := false
-const FAV_TRACK_CACHE_LIMIT := 32
+const FAV_TRACK_CACHE_LIMIT := 64
 var sens_slider: HSlider
 var sens_out: Label
 # options content lives in options_body; it is reparented into options_modal when opened in-game
@@ -468,6 +507,8 @@ func focus_default() -> void:
 			(section_modal.get_meta("close") as Control).grab_focus()
 		elif lbd_modal.visible:
 			(lbd_modal.get_meta("close") as Control).grab_focus()
+		elif ach_modal.visible:
+			(ach_modal.get_meta("close") as Control).grab_focus()
 		elif options_modal.visible:
 			sens_slider.grab_focus()
 		elif track_action_modal.visible:
@@ -899,6 +940,12 @@ func _build_bottombar() -> void:
 	btn_card.add_child(crow)
 	btn_card.pressed.connect(func(): show_account(true))
 	bar_box.add_child(btn_card)
+	# achievements shortcut (right side)
+	var tb := icon_btn("trophy")
+	btn_trophy = tb[0]
+	btn_trophy.tooltip_text = "Achievements"
+	btn_trophy.pressed.connect(func(): show_achievements(true))
+	bar_box.add_child(btn_trophy)
 	# online presence count (right side)
 	pc_online = L("● OFFLINE", "body", 600, 10, DIM, false, 0.14, true)
 	pc_online.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -1872,6 +1919,13 @@ func _build_modals() -> void:
 	f_pp = L("", "mono", 700, 13, FG, false, 0.02)
 	f_pp.visible = false
 	fbox.add_child(f_pp)
+	f_rankup = L("", "display", 800, 15, accent, true, 0.08, true)
+	f_rankup.visible = false
+	fbox.add_child(f_rankup)
+	f_badge = L("", "body", 600, 11, Color("#f5c542"), false, 0.08, true)
+	f_badge.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	f_badge.visible = false
+	fbox.add_child(f_badge)
 	f_best = vbox(2)
 	fbox.add_child(f_best)
 	var fg := vbox(8)
@@ -1899,6 +1953,7 @@ func _build_modals() -> void:
 	_build_options_modal()
 	_build_section_modal()
 	_build_leaderboards_dialog()
+	_build_achievements_modal()
 
 
 func _field(placeholder: String, secret := false) -> LineEdit:
@@ -1952,17 +2007,17 @@ func _build_account_modal() -> void:
 	pp_col.add_child(L("Global rating", "body", 600, 10, DIM, false, 0.16, true))
 	pp_stat = L("0 PP", "display", 800, 22, accent, true, 0.02, true)
 	pp_col.add_child(pp_stat)
+	rank_stat = L("ROOKIE", "body", 700, 11, FG, false, 0.12, true)
+	pp_col.add_child(rank_stat)
 	season_stat = L("SEASON · 0 PP", "body", 600, 10, DIM, false, 0.08, true)
 	pp_col.add_child(season_stat)
 	pp_row.add_child(pp_col)
 	pp_card.add_child(pp_row)
 	acct_box.add_child(pp_card)
 	acct_box.add_child(eyebrow("Achievement record"))
-	progression_lbl = L("Connect to sync milestones and seasonal standing.", "body", 500, 11, DIM)
-	progression_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	progression_lbl.custom_minimum_size = Vector2(120, 0)
-	progression_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	acct_box.add_child(progression_lbl)
+	var ach_open := _action_btn("trophy", "Achievements", "Badges, medals and milestones", "Open achievements")
+	ach_open[0].pressed.connect(func(): show_achievements(true))
+	acct_box.add_child(ach_open[0])
 	# signed out
 	acct_form = vbox(10)
 	var sg := seg([["signin", "Sign in"], ["register", "Create account"]], func(v): _set_acct_mode(v))
@@ -2178,6 +2233,8 @@ func _active_dialog() -> Control:
 		return section_modal
 	if lbd_modal != null and lbd_modal.visible:
 		return lbd_modal
+	if ach_modal != null and ach_modal.visible:
+		return ach_modal
 	if options_modal != null and options_modal.visible:
 		return options_modal
 	if track_action_modal != null and track_action_modal.visible:
@@ -2198,6 +2255,8 @@ func _close_dialog() -> void:
 		hide_section()
 	elif lbd_modal != null and lbd_modal.visible:
 		hide_leaderboards()
+	elif ach_modal != null and ach_modal.visible:
+		show_achievements(false)
 	elif options_modal != null and options_modal.visible:
 		show_options(false)
 	elif track_action_modal != null and track_action_modal.visible:
@@ -2282,6 +2341,8 @@ func _layout_account(W: float, H: float, sl: float, sr: float, st: float, sb: fl
 	var card: Glass = acct_modal.get_child(0)
 	var cw := minf(440.0, W - sl - sr - 16.0)
 	var avail := H - st - sb - 16.0
+	if progression_grid:
+		progression_grid.columns = 3 if cw >= 400.0 else 2
 	# wrapped labels only report their real height once they have the final width
 	for l in [acct_sub, acct_err]:
 		l.custom_minimum_size.x = cw - 44.0
@@ -2855,6 +2916,88 @@ func render_leaderboards_data(data) -> void:
 		_render_lbd()
 
 
+## Dedicated achievements panel: the summary line plus the badge grid, opened from the bottom
+## toolbar trophy or the account screen. Reuses progression_lbl / progression_grid.
+func _build_achievements_modal() -> void:
+	ach_modal = ColorRect.new()
+	(ach_modal as ColorRect).color = Color(5 / 255.0, 6 / 255.0, 10 / 255.0, 0.72)
+	ach_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ach_modal.mouse_filter = Control.MOUSE_FILTER_STOP
+	ach_modal.visible = false
+	add_child(ach_modal)
+	var card := glass(PANEL, LINE, 20.0, 3.0)
+	card.pad(22, 18, 22, 18)
+	card.clip_contents = true
+	ach_modal.add_child(card)
+	ach_box = vbox(12)
+	ach_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ach_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	card.add_child(ach_box)
+	var head := hbox(8)
+	var htext := vbox(2)
+	htext.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	htext.add_child(eyebrow("Your progress"))
+	htext.add_child(L("Achievements", "display", 800, 26, FG, true, 0.0, true))
+	head.add_child(htext)
+	var cb := icon_btn("x")
+	cb[0].size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cb[0].pressed.connect(func(): show_achievements(false))
+	head.add_child(cb[0])
+	ach_modal.set_meta("close", cb[0])
+	ach_box.add_child(head)
+	progression_lbl = L("Connect to sync milestones and seasonal standing.", "body", 600, 11, DIM, false, 0.04, true)
+	progression_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	progression_lbl.custom_minimum_size = Vector2(120, 0)
+	progression_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ach_box.add_child(progression_lbl)
+	ach_scroll = ScrollContainer.new()
+	ach_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	ach_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	ach_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ach_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	ach_box.add_child(ach_scroll)
+	progression_grid = GridContainer.new()
+	progression_grid.columns = 2
+	progression_grid.add_theme_constant_override("h_separation", 8)
+	progression_grid.add_theme_constant_override("v_separation", 8)
+	progression_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ach_scroll.add_child(progression_grid)
+
+
+func show_achievements(on: bool) -> void:
+	if ach_modal == null or on == ach_modal.visible:
+		return
+	ach_modal.visible = on
+	_set_stick_direction(Vector2i.ZERO)
+	if on:
+		# show every badge as locked straight away; the server refresh fills in real progress
+		if progression_grid.get_child_count() == 0:
+			render_progression({})
+		game.net.fetch_progression()
+		relayout()
+		_rise(ach_modal.get_child(0))
+		(ach_modal.get_meta("close") as Control).grab_focus()
+	else:
+		var focus := _focus_owner()
+		if focus and ach_modal.is_ancestor_of(focus):
+			focus.release_focus()
+		if menu_on and btn_trophy:
+			btn_trophy.grab_focus()
+
+
+func _layout_achievements_dialog(W: float, H: float, sl: float, sr: float, st: float, sb: float) -> void:
+	if ach_modal == null or not ach_modal.visible:
+		return
+	var card: Glass = ach_modal.get_child(0)
+	var cw := minf(720.0, W - sl - sr - 16.0)
+	var ch := minf(840.0, H - st - sb - 16.0)
+	progression_grid.columns = 3 if cw >= 520.0 else 2
+	ach_box.custom_minimum_size.x = cw - 44.0
+	card.size = Vector2(cw, ch)
+	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - ch) / 2.0))
+	card._sync()
+
+
 func _set_lbd_board(b: String) -> void:
 	lbd_board = b
 	set_seg(lbd_seg, b)
@@ -3133,6 +3276,7 @@ func relayout() -> void:
 	_layout_options(W, H, sl, sr, st, sb)
 	_layout_section(W, H, sl, sr, st, sb)
 	_layout_leaderboards_dialog(W, H, sl, sr, st, sb)
+	_layout_achievements_dialog(W, H, sl, sr, st, sb)
 	for m in [pause_modal, finish_modal]:
 		var card: Glass = m.get_child(0)
 		var cw := minf(420.0, W - sl - sr)
@@ -3217,6 +3361,10 @@ func _layout_bottombar(w: float, h: float) -> void:
 	btn_card.position = Vector2(pad, 6.0)
 	pc_online.size = pc_online.get_combined_minimum_size()
 	pc_online.position = Vector2(w - pad - pc_online.size.x, cy - pc_online.size.y / 2.0)
+	if btn_trophy:
+		var ts := 42.0
+		btn_trophy.size = Vector2(ts, ts)
+		btn_trophy.position = Vector2(pc_online.position.x - 10.0 - ts, cy - ts / 2.0)
 
 
 ## The track head's height with the name wrapped at the width it will get (labels measure lazily)
@@ -3805,20 +3953,33 @@ func set_finish_rank(info) -> void:
 
 
 ## Performance Points earned on this run and the resulting global total, shown on the finish card.
-func set_finish_pp(pp) -> void:
+func set_finish_pp(pp, prev_global := -1.0) -> void:
 	if not (pp is Dictionary):
 		f_pp.visible = false
+		f_rankup.visible = false
 		return
 	var track_pp := int(round(float(pp.get("track_pp", 0.0))))
-	set_global_pp(float(pp.get("global_pp", _global_pp)))
+	var old_pp: float = prev_global if prev_global >= 0.0 else _global_pp
+	var new_pp := float(pp.get("global_pp", _global_pp))
+	set_global_pp(new_pp)
+	var tier := rank_for(new_pp)
 	var season = pp.get("season", {})
 	var season_total := int(round(float(season.get("global_pp", 0.0)))) if season is Dictionary else 0
-	var txt := "%d PP · SEASON %d" % [track_pp, season_total]
+	var txt := "%d PP · %s · SEASON %d" % [track_pp, str(tier.name).to_upper(), season_total]
 	if bool(pp.get("improved", false)):
 		txt += "  ·  BEST"
 	f_pp.text = txt
 	f_pp.add_theme_color_override("font_color", accent if track_pp > 0 else DIM)
 	f_pp.visible = true
+	# a crossing into a higher driver tier is the headline moment of the finish card
+	if new_pp > 0.0 and int(tier.idx) > int(rank_for(old_pp).idx):
+		f_rankup.text = ("Rank up — " + str(tier.name)).to_upper()
+		f_rankup.add_theme_color_override("font_color", tier.col)
+		f_rankup.visible = true
+		_pop(f_rankup)
+		toast("Rank up: " + str(tier.name))
+	else:
+		f_rankup.visible = false
 	if season is Dictionary:
 		_set_season_stat(season)
 
@@ -3827,6 +3988,36 @@ func set_global_pp(v: float) -> void:
 	_global_pp = v
 	if pp_stat:
 		pp_stat.text = "%s PP" % _fmt_pp(v)
+	_sync_rank_stat()
+
+
+## Map the current global PP to its named driver tier and the PP remaining to the next one.
+func rank_for(pp: float) -> Dictionary:
+	var idx := 0
+	for i in RANKS.size():
+		if pp >= float(RANKS[i].pp):
+			idx = i
+	var cur: Dictionary = RANKS[idx]
+	var has_next := idx + 1 < RANKS.size()
+	var nxt: Dictionary = RANKS[idx + 1] if has_next else cur
+	return {
+		"idx": idx,
+		"name": cur.name,
+		"col": cur.col,
+		"next_name": nxt.name if has_next else "",
+		"to_next": maxf(0.0, float(nxt.pp) - pp) if has_next else 0.0,
+	}
+
+
+func _sync_rank_stat() -> void:
+	if rank_stat == null:
+		return
+	var r := rank_for(_global_pp)
+	var line := str(r.name).to_upper()
+	if r.to_next > 0.0:
+		line += " · +%d PP TO %s" % [int(ceil(r.to_next)), str(r.next_name).to_upper()]
+	rank_stat.text = line
+	rank_stat.add_theme_color_override("font_color", r.col)
 
 
 ## The seedline_pp payload: global total, world rank and most valuable tracks.
@@ -3851,26 +4042,119 @@ func _set_season_stat(season: Dictionary) -> void:
 func render_progression(data: Dictionary) -> void:
 	if progression_lbl == null or data.get("error", false):
 		return
-	var titles := {
-		"first_finish": "First Finish",
-		"explorer_10": "Track Explorer · 10",
-		"explorer_50": "Track Explorer · 50",
-		"environment_tour": "Environment Tour",
-		"event_first": "Challenge Debut",
-		"event_regular": "Event Regular",
-		"event_podium": "Event Podium",
-	}
 	var unlocked = data.get("achievements", data.get("unlocked", {}))
-	if not unlocked is Dictionary:
+	if not (unlocked is Dictionary):
 		unlocked = {}
-	var lines := ["%d RACES · %d TRACKS · %d EVENT ENTRIES" % [int(data.get("runs", 0)), int(data.get("tracks", 0)), int(data.get("event_count", 0))]]
-	for achievement_id in titles:
-		lines.append(("UNLOCKED  " if unlocked.has(achievement_id) else "LOCKED      ") + titles[achievement_id])
-	progression_lbl.text = "\n".join(lines)
+	var medals = data.get("medals", {})
+	if not (medals is Dictionary):
+		medals = {}
+	var envs = data.get("environments", {})
+	var stats := {
+		"runs": int(data.get("runs", 0)),
+		"tracks": int(data.get("tracks", 0)),
+		"environments": envs.size() if envs is Dictionary else 0,
+		"event_count": int(data.get("event_count", 0)),
+		"medals_any": int(medals.get("any", 0)),
+		"medals_gold": int(medals.get("gold", 0)),
+		"medals_author": int(medals.get("author", 0)),
+	}
+	var done := 0
+	for a in ACHIEVEMENTS:
+		if unlocked.has(a.id):
+			done += 1
+	progression_lbl.text = "%d / %d UNLOCKED · %d RACES · %d TRACKS" % [done, ACHIEVEMENTS.size(), stats.runs, stats.tracks]
+	progression_lbl.add_theme_color_override("font_color", DIM)
+	for c in progression_grid.get_children():
+		c.queue_free()
+	for a in ACHIEVEMENTS:
+		var is_unlocked: bool = unlocked.has(a.id)
+		var val: int = int(stats.get(a.get("stat", ""), 0)) if a.has("stat") else (1 if is_unlocked else 0)
+		progression_grid.add_child(_achievement_cell(a, is_unlocked, val))
+	progression_grid.visible = true
+	if ach_modal and ach_modal.visible:
+		relayout()
 	var fresh = data.get("new_achievements", [])
 	if fresh is Array and not fresh.is_empty():
-		var achievement_id := str(fresh[0])
-		toast("Badge unlocked: " + str(titles.get(achievement_id, achievement_id)))
+		toast("Badge unlocked: " + _ach_title(str(fresh[0])))
+
+
+## One badge tile: icon + title, then an "Unlocked" caption or a progress bar toward its target.
+func _achievement_cell(a: Dictionary, is_unlocked: bool, val: int) -> Control:
+	var target: int = maxi(1, int(a.get("target", 1)))
+	var gold := Color("#f5c542")
+	var cell := glass(PANEL2 if is_unlocked else Color(1, 1, 1, 0.025), LINE if is_unlocked else Color(0, 0, 0, 0), 12.0)
+	cell.pad(10, 10, 10, 10)
+	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var col := vbox(6)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var head := hbox(7)
+	var ic := Icon.new(str(a.get("icon", "trophy")), 16)
+	ic.color = gold if is_unlocked else DIM
+	ic.filled = is_unlocked
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(ic)
+	var title := L(str(a.title), "body", 700, 11, FG if is_unlocked else DIM, false, 0.04, true)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	head.add_child(title)
+	col.add_child(head)
+	if is_unlocked:
+		col.add_child(L("Unlocked", "body", 600, 9, gold, false, 0.14, true))
+	elif a.has("stat"):
+		col.add_child(_progress_bar(float(mini(val, target)) / float(target), accent))
+		col.add_child(L("%d / %d" % [mini(val, target), target], "mono", 600, 9, DIM, false, 0.04))
+	else:
+		col.add_child(L("Locked", "body", 600, 9, DIM, false, 0.14, true))
+	cell.add_child(col)
+	return cell
+
+
+## A thin rounded progress bar; the fill tracks `ratio` through anchors so it follows the cell width.
+func _progress_bar(ratio: float, col: Color) -> Control:
+	var holder := Control.new()
+	holder.custom_minimum_size = Vector2(0, 5)
+	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bg := Dot.new()
+	bg.rect = true
+	bg.rad = 2.5
+	bg.col = Color(1, 1, 1, 0.1)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	holder.add_child(bg)
+	var fill := Dot.new()
+	fill.rect = true
+	fill.rad = 2.5
+	fill.col = col
+	fill.anchor_right = clampf(ratio, 0.0, 1.0)
+	fill.anchor_bottom = 1.0
+	holder.add_child(fill)
+	return holder
+
+
+func _ach_title(id: String) -> String:
+	for a in ACHIEVEMENTS:
+		if a.id == id:
+			return str(a.title)
+	return id
+
+
+## A short scale-up flourish for a celebratory label on the finish card.
+func _pop(c: Control) -> void:
+	c.pivot_offset = c.get_combined_minimum_size() / 2.0
+	c.scale = Vector2(0.7, 0.7)
+	create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).tween_property(c, "scale", Vector2.ONE, 0.4)
+
+
+## New badges unlocked by the just-finished run, shown on the finish card.
+func set_finish_achievements(ids: Array) -> void:
+	if f_badge == null or ids.is_empty():
+		return
+	var names: Array[String] = []
+	for id in ids:
+		names.append(_ach_title(str(id)))
+	f_badge.text = ("Badge unlocked · " + " · ".join(names)).to_upper()
+	f_badge.visible = true
+	_pop(f_badge)
 
 
 func set_finish_events(events: Array) -> void:
@@ -3950,42 +4234,89 @@ func render_recent_tracks() -> void:
 		call_deferred("_populate_fav_previews")
 
 
+## Fill in the track-tile minimaps. Cached (and already-loaded current) tracks render instantly;
+## the rest are generated on worker threads in parallel — WorkerThreadPool caps itself at the host's
+## core count, so the previews build quickly without pinning every CPU — then applied on the main
+## thread. Generation is pure (TrackGen keeps no shared state), so it is safe off the main thread.
 func _populate_fav_previews() -> void:
 	if fav_preview_task_running or _section_key != "tracks" or section_modal == null or not section_modal.visible:
 		return
 	fav_preview_task_running = true
 	var revision := fav_preview_revision
 	var previews: Array = fav_preview_views + recent_preview_views
+	# cheap pass: paint every cache hit now, and gather the unique seeds that still need generating
+	var pending: Array = []            # [{entry, key}]
+	var jobs := {}                     # key -> {seed, env}; deduped so shared seeds generate once
 	for entry in previews:
-		if revision != fav_preview_revision or _section_key != "tracks" or not section_modal.visible:
-			break
 		var preview := entry.map as MapView
 		if not is_instance_valid(preview) or preview.t != null:
 			continue
-		var track := _cached_fav_track(str(entry.seed), str(entry.env))
-		preview.set_track(track, entry.accent)
+		var key: String = str(entry.env) + "|" + str(entry.seed)
+		var cached := _cache_lookup(key, str(entry.seed), str(entry.env))
+		if cached != null:
+			preview.set_track(cached, entry.accent)
+			continue
+		pending.append({"entry": entry, "key": key})
+		if not jobs.has(key):
+			jobs[key] = {"seed": str(entry.seed), "env": str(entry.env)}
+	if jobs.is_empty():
+		fav_preview_task_running = false
+		return
+	# generate the misses in parallel off the main thread
+	var keys: Array = jobs.keys()
+	var results := {}
+	var mutex := Mutex.new()
+	var task_id := WorkerThreadPool.add_group_task(func(i: int):
+		var k: String = keys[i]
+		var job: Dictionary = jobs[k]
+		var td := TrackGen.generate(job.seed, job.env)
+		mutex.lock()
+		results[k] = td
+		mutex.unlock(), keys.size(), -1, false, "seedline track previews")
+	while not WorkerThreadPool.is_group_task_completed(task_id):
 		await get_tree().process_frame
+	WorkerThreadPool.wait_for_group_task_completion(task_id)
+	# apply on the main thread (unless the list changed underneath us while generating)
+	if revision == fav_preview_revision:
+		for k in results:
+			_cache_put(str(k), results[k])
+		for item in pending:
+			var preview := item.entry.map as MapView
+			if is_instance_valid(preview) and preview.t == null and results.has(item.key):
+				preview.set_track(results[item.key], item.entry.accent)
 	fav_preview_task_running = false
 	if _section_key == "tracks" and section_modal.visible and revision != fav_preview_revision:
 		call_deferred("_populate_fav_previews")
 
 
-func _cached_fav_track(seed: String, env_key: String) -> TrackData:
-	var key := env_key + "|" + seed
+## Cached track for a tile, or the live track if it is the one on screen; null if it must be generated.
+func _cache_lookup(key: String, seed: String, env_key: String) -> TrackData:
 	if fav_track_cache.has(key):
 		fav_track_cache_order.erase(key)
 		fav_track_cache_order.append(key)
 		return fav_track_cache[key]
-	var track: TrackData
 	if game.track != null and game.track.seed == seed and game.track.env_key == env_key:
-		track = game.track
-	else:
-		track = TrackGen.generate(seed, env_key)
-	fav_track_cache[key] = track
+		_cache_put(key, game.track)
+		return game.track
+	return null
+
+
+func _cache_put(key: String, track: TrackData) -> void:
+	fav_track_cache_order.erase(key)
 	fav_track_cache_order.append(key)
-	if fav_track_cache_order.size() > FAV_TRACK_CACHE_LIMIT:
+	fav_track_cache[key] = track
+	while fav_track_cache_order.size() > FAV_TRACK_CACHE_LIMIT:
 		var expired: String = fav_track_cache_order.pop_front()
 		fav_track_cache.erase(expired)
+
+
+func _cached_fav_track(seed: String, env_key: String) -> TrackData:
+	var key := env_key + "|" + seed
+	var hit := _cache_lookup(key, seed, env_key)
+	if hit != null:
+		return hit
+	var track := TrackGen.generate(seed, env_key)
+	_cache_put(key, track)
 	return track
 
 
@@ -4369,7 +4700,7 @@ func hide_finish() -> void:
 		focus.release_focus()
 
 
-func show_finish(track_txt: String, t: float, medal, delta_txt: String, delta_col: Color, pb) -> void:
+func show_finish(track_txt: String, t: float, medal, delta_txt: String, delta_col: Color, pb, is_pb := false) -> void:
 	f_track.text = track_txt.to_upper()
 	f_time.text = U.fmt(t)
 	if medal != null:
@@ -4389,11 +4720,15 @@ func show_finish(track_txt: String, t: float, medal, delta_txt: String, delta_co
 	f_pp.visible = false
 	f_rival.visible = false
 	f_event.visible = false
+	f_rankup.visible = false
+	f_badge.visible = false
 	render_personal_best(f_best, pb)
 	sync_icons()
 	finish_modal.visible = true
 	_rise(finish_modal.get_child(0))
 	finish_retry.grab_focus()
+	if is_pb:
+		_pop(f_time)
 
 
 func set_loading(on: bool) -> void:

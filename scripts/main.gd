@@ -48,6 +48,7 @@ var net: Net
 var run_info = null
 var last_pp = null
 var last_events: Array = []
+var last_new_achievements: Array = []
 var ghost_rec: Array = []
 var server_ghost_rec: Array = []
 var server_ghost_complete := true
@@ -125,7 +126,7 @@ func _ready() -> void:
 	net.run_submitted.connect(_on_run_submitted)
 	net.pp_updated.connect(_on_pp_updated)
 	net.pp_ready.connect(func(d): ui.render_pp(d))
-	net.progression_changed.connect(func(d): ui.render_progression(d))
+	net.progression_changed.connect(_on_progression)
 	net.event_progressed.connect(_on_event_progressed)
 	net.leaderboards_ready.connect(func(d): ui.render_leaderboards_data(d))
 	net.account_changed.connect(_on_account_changed)
@@ -857,6 +858,7 @@ func finish_race(t: float) -> void:
 	finish_t = t
 	last_pp = null
 	last_events.clear()
+	last_new_achievements.clear()
 	sfx.beep(990, 0.12, "triangle", 0.25)
 	get_tree().create_timer(0.12).timeout.connect(func(): sfx.beep(1480, 0.3, "triangle", 0.22))
 	var prev_best = best.t if best != null else null
@@ -872,13 +874,14 @@ func finish_race(t: float) -> void:
 				f.best = t
 				Store.set_value("favs", favs)
 	run_info = null
+	var prev_pp := net.global_pp
+	var m = CarSim.medal_for(t, track.medals)
 	if net.eligible(track.seed):
-		net.submit_run(track.seed, track.env_key, t, track.length, splits, U.LAPS, server_ghost_rec if server_ghost_complete else [])
+		net.submit_run(track.seed, track.env_key, t, track.length, splits, U.LAPS, server_ghost_rec if server_ghost_complete else [], str(m) if m != null else "")
 	var seed_now := track.seed
 	get_tree().create_timer(1.3).timeout.connect(func():
 		if state != "finished" or track.seed != seed_now:
 			return
-		var m = CarSim.medal_for(t, track.medals)
 		var dtxt := ""
 		var dcol := Ui.FG
 		if prev_best == null:
@@ -886,13 +889,15 @@ func finish_race(t: float) -> void:
 		else:
 			dtxt = ("New best " if is_pb else "") + U.fmt_delta(t - prev_best)
 			dcol = Ui.FAST if t < prev_best else Ui.SLOW
-		ui.show_finish(track.name + " · " + track.seed, t, m, dtxt, dcol, minf(t, prev_best if prev_best != null else t))
+		ui.show_finish(track.name + " · " + track.seed, t, m, dtxt, dcol, minf(t, prev_best if prev_best != null else t), is_pb)
 		ui.set_finish_rank(run_info)
 		ui.set_finish_rival(rival_ghost_fleet.target_name(), rival_ghost_fleet.target_time(), t)
 		if last_pp is Dictionary:
-			ui.set_finish_pp(last_pp)
+			ui.set_finish_pp(last_pp, prev_pp)
 		if not last_events.is_empty():
-			ui.set_finish_events(last_events))
+			ui.set_finish_events(last_events)
+		if not last_new_achievements.is_empty():
+			ui.set_finish_achievements(last_new_achievements))
 
 
 # ================================================================== online (Nakama)
@@ -947,6 +952,17 @@ func _on_pp_updated(track_seed: String, pp: Dictionary) -> void:
 		last_pp = pp
 	if track != null and track_seed == track.seed and ui.finish_modal.visible:
 		ui.set_finish_pp(pp)
+
+
+## Account progression update (run totals, achievements). Unlocks earned this run are also
+## surfaced on the finish card if it is up.
+func _on_progression(d: Dictionary) -> void:
+	ui.render_progression(d)
+	var fresh = d.get("new_achievements", [])
+	if fresh is Array and not fresh.is_empty():
+		last_new_achievements = fresh
+		if ui.finish_modal.visible:
+			ui.set_finish_achievements(fresh)
 
 
 func _on_event_progressed(track_seed: String, events: Array) -> void:
