@@ -859,8 +859,8 @@ func finish_race(t: float) -> void:
 	last_pp = null
 	last_events.clear()
 	last_new_achievements.clear()
-	sfx.beep(990, 0.12, "triangle", 0.25)
-	get_tree().create_timer(0.12).timeout.connect(func(): sfx.beep(1480, 0.3, "triangle", 0.22))
+	sfx.beep(990, 0.12, "triangle", 0.16)
+	get_tree().create_timer(0.12).timeout.connect(func(): sfx.beep(1480, 0.3, "triangle", 0.14))
 	var prev_best = best.t if best != null else null
 	var is_pb: bool = prev_best == null or t < prev_best
 	if is_pb:
@@ -1235,11 +1235,11 @@ func _process(delta: float) -> void:
 		if n != cd_last and cd_t > 0.0:
 			cd_last = n
 			ui.count_flash(str(n), false)
-			sfx.beep(520, 0.14)
+			sfx.beep(520, 0.14, "triangle", 0.13)
 		if cd_t <= 0.0:
 			state = "race"
 			ui.count_flash("GO", true)
-			sfx.beep(1040, 0.35, "square", 0.2)
+			sfx.beep(1040, 0.35, "triangle", 0.15)
 			acc = 0.0
 			if cd.boost:
 				car.boost_t = 1.1
@@ -1509,7 +1509,7 @@ func _update_effects(dt: float, x: float, z: float, h: float, speed: float) -> v
 	else:
 		fx.hide_sparks()
 	if car.level_up != 0:
-		sfx.beep([0, 620, 830, 1100][car.level_up], 0.08, "triangle", 0.14)
+		sfx.beep([0, 620, 830, 1100][car.level_up], 0.08, "triangle", 0.1)
 		car.level_up = 0
 	if car.turbo != 0:
 		sfx.whoosh()

@@ -1,10 +1,10 @@
 class_name Sfx
 extends Node
-## Synthesised sound (port of the web build's Web Audio graph): a saw+square engine through a resonant low-pass,
+## Synthesised sound (port of the web build's Web Audio graph): a harmonic engine through a low-pass,
 ## filtered-noise skid and wind loops, and short one-shots rendered on demand and cached.
 
 const RATE := 44100
-const MASTER := 0.55
+const MASTER := 0.48
 
 var on := true
 var inited := false
@@ -62,7 +62,7 @@ func init(sound_on: bool) -> void:
 		AudioServer.set_bus_send(bus_master, "Master")
 	engine_lp = AudioEffectLowPassFilter.new()
 	engine_lp.cutoff_hz = 600.0
-	engine_lp.resonance = 0.75
+	engine_lp.resonance = 0.35
 	bus_engine = _bus("SeedlineEngine", [engine_lp])
 	var bp := AudioEffectBandPassFilter.new()
 	bp.cutoff_hz = 1900.0
@@ -78,14 +78,13 @@ func init(sound_on: bool) -> void:
 	for i in noise.size():
 		noise[i] = randf() * 2.0 - 1.0
 	var nw := _wav(noise, true)
-	# engine: one period of a saw at 100 Hz plus a square an octave down (gain .35); pitch_scale sets the note
+	# A harmonic-rich engine cycle; pitch_scale moves its fundamental with simulated RPM.
 	var period := RATE / 50
 	var eng := PackedFloat32Array()
 	eng.resize(period)
 	for i in period:
-		var ph2 := float(i) / period          # square phase (50 Hz)
-		var ph1 := fmod(ph2 * 2.0, 1.0)       # saw phase (100 Hz)
-		eng[i] = ((ph1 * 2.0 - 1.0) + (1.0 if ph2 < 0.5 else -1.0) * 0.35) * 0.5
+		var phase := TAU * float(i) / period
+		eng[i] = (sin(phase) + sin(phase * 2.0) * 0.48 + sin(phase * 3.0) * 0.24 + sin(phase * 4.0) * 0.12 + sin(phase * 5.0) * 0.06) * 0.28
 	engine_p = _player(_wav(eng, true), "SeedlineEngine")
 	skid_p = _player(nw, "SeedlineSkid")
 	wind_p = _player(nw, "SeedlineWind")
@@ -167,15 +166,15 @@ func engine(speed: float, load: float, boost: bool, active: bool) -> void:
 	var rpm := U.clampf2((speed - G[g - 1]) / (G[g] - G[g - 1]), 0.0, 1.0) * 0.75 + 0.25 + (load * 0.35 if speed < 1.0 else 0.0)
 	t_fr = 40.0 + rpm * (110.0 + g * 12.0)
 	t_cut = 300.0 + load * 1100.0 + rpm * 900.0 + (900.0 if boost else 0.0)
-	t_eg = 0.055 + load * 0.06 if active else 0.0
+	t_eg = 0.075 + load * 0.07 + (0.025 if boost else 0.0) if active else 0.0
 
 
 func skid(v: float) -> void:
-	t_skg = v
+	t_skg = v * 0.55
 
 
 func wind(v: float) -> void:
-	t_wg = v
+	t_wg = v * 0.72
 
 
 func _play(key: String, make: Callable, vol: float = 1.0) -> void:
@@ -204,13 +203,14 @@ func beep(f: float, d: float = 0.15, type: String = "square", vol: float = 0.18)
 			var t := float(i) / RATE
 			var ph := fmod(t * f, 1.0)
 			var s := (1.0 if ph < 0.5 else -1.0) if type == "square" else (1.0 - 4.0 * absf(ph - 0.5))
-			out[i] = s * vol * pow(0.001 / vol, t / d)
+			var attack := minf(t / 0.006, 1.0)
+			out[i] = s * vol * attack * pow(0.001 / vol, t / d)
 		return out)
 
 
 func chime(up: bool) -> void:
-	beep(880.0 if up else 660.0, 0.12, "triangle", 0.22)
-	get_tree().create_timer(0.07).timeout.connect(func(): beep(1320.0 if up else 990.0, 0.18, "triangle", 0.2))
+	beep(880.0 if up else 660.0, 0.12, "triangle", 0.15)
+	get_tree().create_timer(0.07).timeout.connect(func(): beep(1320.0 if up else 990.0, 0.18, "triangle", 0.13))
 
 
 ## RBJ biquad over a buffer; f0 may vary per sample (Callable(t) -> Hz)
@@ -250,13 +250,18 @@ func _biquad(src: PackedFloat32Array, kind: String, f0: Callable, q: float) -> P
 
 
 func thud(v: float) -> void:
-	var g := minf(0.6, v)
+	var g := clampf(v, 0.0, 1.0) * 0.4
 	_play("thud", func():
-		var n := int(0.3 * RATE)
-		var f := _biquad(noise.slice(0, n), "lowpass", func(t): return 260.0, 0.7071)
+		var n := int(0.34 * RATE)
+		var f := _biquad(noise.slice(0, n), "lowpass", func(t): return 420.0, 0.7071)
 		for i in n:
 			var t := float(i) / RATE
-			f[i] *= 1.0 * pow(0.001, minf(t / 0.25, 1.0)) if t < 0.25 else 0.0
+			var tail := exp(-t * 18.0)
+			var cycles := 105.0 * t + (48.0 - 105.0) * t * t / 0.4 if t < 0.2 else 15.3 + 48.0 * (t - 0.2)
+			var phase := TAU * cycles
+			f[i] = f[i] * 0.55 * exp(-t * 30.0) + sin(phase) * 0.38 * tail
+			if t > 0.24:
+				f[i] *= exp(-(t - 0.24) * 35.0)
 		return f, g)
 
 
@@ -267,7 +272,7 @@ func splash(v: float) -> void:
 		for i in n:
 			var t := float(i) / RATE
 			f[i] *= pow(0.001 / 0.35, minf(t / 0.6, 1.0)) if t < 0.6 else 0.0
-		return f, 0.35 * v)
+		return f, 0.24 * v)
 
 
 func whoosh() -> void:
@@ -277,4 +282,4 @@ func whoosh() -> void:
 		for i in n:
 			var t := float(i) / RATE
 			f[i] *= pow(0.001 / 0.25, minf(t / 0.6, 1.0)) if t < 0.6 else 0.0
-		return f, 0.25)
+		return f, 0.18)
