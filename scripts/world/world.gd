@@ -1189,7 +1189,7 @@ func _build_common() -> void:
 		d.rotation.y = p.a + PI / 2.0
 		return acc if i % 2 == 1 else cb, false)
 	# after dark every place gets trackside lamps (Neon and Old Town have their own)
-	if dark and t.env_key != "NEON" and t.env_key != "TOWN":
+	if dark and t.env_key != "NEON" and t.env_key != "TOWN" and t.env_key != "GRID":
 		var lamps: Array = []
 		var i := 8
 		while i < t.n:

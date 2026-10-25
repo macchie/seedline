@@ -120,6 +120,25 @@ static func road(e: Dictionary, encode: bool) -> ImageTexture:
 
 
 static func ground(e: Dictionary) -> ImageTexture:
+	if e.get("grid", false):
+		var key := "ground_grid"
+		if _cache.has(key):
+			return _cache[key]
+		var img := Image.create(256, 256, false, Image.FORMAT_RGBA8)
+		img.fill(Color("#04050a"))
+		_noise_paint(img, 6.0, 2)
+		var c1 := Color(34 / 255.0, 229 / 255.0, 1.0, 0.9)    # bright cyan cell border
+		var c2 := Color(34 / 255.0, 229 / 255.0, 1.0, 0.28)   # dim inner cross
+		# 3px cell border + a 1px centre cross so the tiled floor reads as a lightgrid
+		_blend(img, 0, 0, 256, 3, c1)
+		_blend(img, 0, 253, 256, 256, c1)
+		_blend(img, 0, 0, 3, 256, c1)
+		_blend(img, 253, 0, 256, 256, c1)
+		_blend(img, 127, 0, 129, 256, c2)
+		_blend(img, 0, 127, 256, 129, c2)
+		var t := _to_tex(img)
+		_cache[key] = t
+		return t
 	if e.get("night", false):
 		var key := "ground_night"
 		if _cache.has(key):

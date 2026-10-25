@@ -1,9 +1,9 @@
 class_name Envs
-## The twelve worlds. Colours are 0xRRGGBB display values.
+## The sixteen worlds. Colours are 0xRRGGBB display values.
 
 const NIGHT_ENABLED := false  # night mode is built but switched off for now
 
-const KEYS := ["CANYON", "ALPINE", "NEON", "GROVE", "ISLAND", "COUNTRY", "VOLCANO", "GREECE", "TOWN", "WETLANDS", "HARBOR", "SALTFLATS"]
+const KEYS := ["CANYON", "ALPINE", "NEON", "GROVE", "ISLAND", "COUNTRY", "VOLCANO", "GREECE", "TOWN", "WETLANDS", "HARBOR", "SALTFLATS", "NOCTURNE", "DUSKMESA", "SKYWAY", "GRID"]
 
 const DATA := {
 	"CANYON": {"name": "Canyon", "accent": "#ff9a3c", "onAccent": "#160b02", "fog": 0xe8ad7c, "fogNear": 130.0, "fogFar": 380.0, "hemiS": 0xffe0bd, "hemiG": 0x8a4a2a, "hemiI": 0.85, "sun": 0xffe6c4, "sunI": 1.2, "sunDir": [-0.8, 1.0, 0.55],
@@ -54,6 +54,22 @@ const DATA := {
 		"gLow": 0xd9d0bc, "gHigh": 0xf1e9d6, "shoulder": 0xbeb49e, "road": "#555451", "edge": "rgba(255,250,235,.95)", "dash": "rgba(255,224,150,.8)", "curbA": 0xc4a66a, "curbB": 0xf5eedc,
 		"amp": 0.35, "salt": true, "weather": "dust", "grip": 0.99, "smoke": 0xd8cfbd, "grade": {"tint": [1.05, 1.01, 0.94], "sat": 0.72, "cloud": 0.3}, "birds": [3, 0x77746d],
 		"words": [["White", "Mirage", "Alkali", "Prism", "Dry", "Solar", "Glass", "Brine"], ["Pan", "Horizon", "Basin", "Mirror", "Expanse", "Crust", "Reach", "Run"]]},
+	"NOCTURNE": {"name": "Nocturne Bloom", "accent": "#ff4bd8", "onAccent": "#1a0216", "fog": 0x0c1a22, "fogNear": 85.0, "fogFar": 300.0, "hemiS": 0x2b3b60, "hemiG": 0x0c1a14, "hemiI": 0.7, "sun": 0x7e8cd6, "sunI": 0.45, "sunDir": [-0.4, 1.0, -0.3],
+		"gLow": 0x16301f, "gHigh": 0x0d1d15, "shoulder": 0x13241b, "road": "#1a1f24", "edge": "rgba(120,240,255,.95)", "dash": "rgba(255,90,220,.8)", "curbA": 0xff2bd6, "curbB": 0x22e5ff,
+		"amp": 16.0, "weather": "rain", "grip": 0.9, "smoke": 0x6a8c9a, "lights": 0.85, "grade": {"tint": [1.02, 0.97, 1.12], "sat": 1.26, "cloud": 0.35, "vig": 0.5}, "birds": [6, 0x2ee6c8],
+		"river": true, "riverCol": 0x1fd6c0, "words": [["Lumen", "Glow", "Spore", "Hollow", "Dusk", "Violet", "Firefly", "Moonlit"], ["Grove", "Thicket", "Hollow", "Canopy", "Mire", "Bloom", "Glade", "Run"]]},
+	"DUSKMESA": {"name": "Dusk Mesa", "accent": "#ff7ab8", "onAccent": "#1a0410", "fog": 0x6a3a7a, "fogNear": 140.0, "fogFar": 440.0, "hemiS": 0xffb0d8, "hemiG": 0x5a3a6a, "hemiI": 0.95, "sun": 0xffc07a, "sunI": 1.1, "sunDir": [-0.9, 0.5, 0.3],
+		"gLow": 0x9a5a7a, "gHigh": 0x6a3a64, "shoulder": 0x8a5a6a, "road": "#3a2a3a", "edge": "rgba(255,220,240,.9)", "dash": "rgba(255,180,90,.85)", "curbA": 0xff5a9a, "curbB": 0xffd0e4,
+		"amp": 22.0, "terrace": true, "weather": "dust", "grip": 0.98, "smoke": 0xd8a0c0, "grade": {"tint": [1.08, 0.95, 1.08], "sat": 1.18, "cloud": 0.2, "vig": 0.42}, "birds": [5, 0x3a2030],
+		"words": [["Vapor", "Neon", "Sunset", "Mirage", "Violet", "Afterglow", "Dusk", "Magenta"], ["Mesa", "Bluff", "Butte", "Draw", "Rise", "Flats", "Pass", "Horizon"]]},
+	"SKYWAY": {"name": "Skyway", "accent": "#a9c7ff", "onAccent": "#0a1420", "fog": 0xcfe0ff, "fogNear": 120.0, "fogFar": 380.0, "hemiS": 0xfff0f8, "hemiG": 0xcdd8ff, "hemiI": 1.0, "sun": 0xffffff, "sunI": 1.1, "sunDir": [-0.5, 1.0, 0.4],
+		"gLow": 0xeef2ff, "gHigh": 0xffffff, "shoulder": 0xdfe6ff, "road": "#3a4258", "edge": "rgba(255,255,255,.95)", "dash": "rgba(170,200,255,.85)", "curbA": 0x7aa0ff, "curbB": 0xffffff,
+		"amp": 0.0, "weather": "none", "grip": 0.96, "smoke": 0xeaf0ff, "grade": {"tint": [1.0, 1.0, 1.03], "sat": 1.03, "cloud": 0.5, "vig": 0.0}, "birds": [12, 0xffffff],
+		"words": [["Cirrus", "Zephyr", "Halo", "Cloud", "Aether", "Skybound", "Drift", "Celestial"], ["Span", "Causeway", "Terrace", "Reach", "Viaduct", "Arc", "Way", "Heights"]]},
+	"GRID": {"name": "Grid", "accent": "#22e5ff", "onAccent": "#02121a", "fog": 0x05060c, "fogNear": 95.0, "fogFar": 360.0, "hemiS": 0x0a1830, "hemiG": 0x02040a, "hemiI": 0.6, "sun": 0x6aa0ff, "sunI": 0.3, "sunDir": [0.3, 1.0, -0.4],
+		"gLow": 0x05060e, "gHigh": 0x070a16, "shoulder": 0x0a1018, "road": "#0a0f1a", "edge": "rgba(34,229,255,.95)", "dash": "rgba(255,106,31,.85)", "curbA": 0x22e5ff, "curbB": 0xff6a1f,
+		"amp": 0.0, "night": true, "grid": true, "lights": 1.0, "weather": "none", "grip": 1.0, "smoke": 0x3a6a8a, "grade": {"tint": [0.98, 1.0, 1.12], "sat": 1.3, "cloud": 0.0, "vig": 0.6},
+		"words": [["Vector", "Cyan", "Lightcycle", "Zero", "Binary", "Neon", "Circuit", "Null"], ["Grid", "Sector", "Node", "Array", "Runtime", "Loop", "Vector", "Void"]]},
 }
 
 
@@ -74,7 +90,8 @@ static func variant(key: String, night: bool) -> Dictionary:
 		if night:
 			e["dark"] = true
 			e["tod"] = "Night"
-		else:
+		elif key == "NEON":
+			# Neon's day-cycle mode is a violet dusk (overrides its own night palette)
 			e["tod"] = "Dusk"
 			e["dark"] = false
 			e["fog"] = 0x8a6cc0
@@ -87,6 +104,10 @@ static func variant(key: String, night: bool) -> Dictionary:
 			e["gHigh"] = 0x3a2f6a
 			e["shoulder"] = 0x30285a
 			e["grade"] = {"tint": [1.04, 0.98, 1.04], "sat": 1.15, "cloud": 0.12, "vig": 0.42}
+		else:
+			# other night worlds render their own palette as a permanent night
+			e["dark"] = true
+			e["tod"] = "Night"
 		return e
 	if not night:
 		e["dark"] = false

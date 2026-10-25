@@ -582,6 +582,14 @@ func build() -> void:
 			greece()
 		"TOWN":
 			town()
+		"NOCTURNE":
+			nocturne()
+		"DUSKMESA":
+			dusk_mesa()
+		"SKYWAY":
+			skyway()
+		"GRID":
+			grid_void()
 		_:
 			canyon()
 
@@ -1468,3 +1476,197 @@ func town() -> void:
 		obst(ch, 4.5)
 	balloons(2)
 	birds(e.birds)
+
+
+# ------------------------------------------------------------------ Nocturne Bloom: a dark bioluminescent jungle
+func nocturne() -> void:
+	var trees := around(300, HW + 6.0, 85.0)
+	round_trees(trees, [0x14301f, 0x0f2a1c, 0x1a3a26, 0x10281a, 0x173320], 0.04)
+	# a faint emissive bloom haloing some canopies, in shifting neon hues
+	var glow_tops := slice(trees, 130)
+	var halo_p := PackedVector3Array()
+	var halo_c: Array = []
+	w.inst(Geo.icosahedron(3.1, 1).translate(0, 4.6, 0), Mats.basic({"color": 0xffffff, "opacity": 0.12, "blend": "add"}), glow_tops, func(p, d, i):
+		var s: float = 0.8 + p.s * 0.8
+		d.position = Vector3(p.x, p.y, p.z)
+		d.scalar(s)
+		var c := col(pick([0x1fd6c0, 0xff4bd8, 0x7a6bff]))
+		halo_p.append(Vector3(p.x, p.y + 4.6 * s, p.z))
+		halo_c.append(c)
+		return c, false)
+	w.sprites(halo_p, halo_c, 6.5, {"blend": "add"})
+	# bioluminescent mushrooms lining the road: pale stems topped with glowing caps
+	var mush := land(around(150, HW + 4.0, 34.0, 0.0))
+	w.inst(Geo.cylinder(0.12, 0.2, 1, 6).translate(0, 0.5, 0), T({"color": 0x2a3a3a}), mush, func(p, d, i):
+		var s: float = 0.7 + p.s * 1.4
+		d.position = Vector3(p.x, p.y, p.z)
+		d.scale = Vector3(s, s * 1.4, s), false)
+	var cap_p := PackedVector3Array()
+	var cap_c: Array = []
+	w.inst(Geo.sphere(0.5, 8, 6, 0, TAU, 0, PI / 2.0), T({"emissive": 0xffffff, "emissive_i": 0.8}), mush, func(p, d, i):
+		var s: float = 0.7 + p.s * 1.4
+		d.position = Vector3(p.x, p.y + s * 1.4, p.z)
+		d.scale = Vector3(s, s * 0.7, s)
+		var c := col(pick([0x2ee6c8, 0xff4bd8, 0x7af0c0]))
+		cap_p.append(Vector3(p.x, p.y + s * 1.55, p.z))
+		cap_c.append(c)
+		obst(p, 0.3 * s)
+		return c, false)
+	w.sprites(cap_p, cap_c, 3.6, {"blend": "add"})
+	# ground ferns glowing faintly between the trees
+	w.inst(Geo.cone(0.5, 1.4, 5).translate(0, 0.7, 0), anim({"color": 0x1a4a3a}, "sway", 0.05), around(220, HW + 3.0, 40.0, 0.05), func(p, d, i):
+		var s: float = 0.6 + p.s
+		d.position = Vector3(p.x, p.y, p.z)
+		d.scale = Vector3(s, s, s)
+		d.rotation.y = p.a, false)
+	# drifting spores, in two colours
+	fireflies(70, 0x2ee6c8)
+	fireflies(45, 0xff4bd8)
+	birds(e.birds)
+
+
+# ------------------------------------------------------------------ Dusk Mesa: a vaporwave sunset desert of stepped buttes
+func dusk_mesa() -> void:
+	rocks(around(180, HW + 6.0, 90.0), 0x7a4a6a, 1.4)
+	# stepped mesas on the horizon, mauve bodies with a brighter sun-struck cap
+	var mesas := slice(spaced(around(60, HW + 50.0, 190.0, 0.6), 46.0), 18)
+	var mg := Geo.cylinder(1, 1.12, 1, 7).translate(0, 0.5, 0).to_mesh()
+	w.inst(mg, T(), mesas, func(p, d, i):
+		var Rr: float = 10.0 + p.s * 16.0
+		var H: float = 14.0 + p.r * 24.0
+		d.position = Vector3(p.x, p.y - 1.0, p.z)
+		d.scale = Vector3(Rr, H, Rr * (0.8 + p.r * 0.4))
+		d.rotation.y = p.a
+		return tint(0x6a3a5a, 1.1))
+	w.inst(mg, T(), mesas.filter(func(p): return p.r > 0.3), func(p, d, i):
+		var Rr: float = 10.0 + p.s * 16.0
+		var H: float = 14.0 + p.r * 24.0
+		d.position = Vector3(p.x, p.y - 1.0 + H, p.z)
+		d.scale = Vector3(Rr * 0.6, H * 0.42, Rr * (0.8 + p.r * 0.4) * 0.6)
+		d.rotation.y = p.a
+		return tint(0x9a5a7a, 1.1))
+	# scattered boulders catching the pink light
+	w.inst(Geo.icosahedron(0.8, 0), T(), around(220, HW + 5.0, 60.0, 0.5), func(p, d, i):
+		d.position = Vector3(p.x, p.y + 0.2, p.z)
+		d.scalar(0.6 + p.s)
+		return tint(0x8a5a72, 1.4), false)
+	# tall glowing totems trackside, humming with synth light
+	var totems := slice(spaced(around(40, HW + 8.0, 40.0, 0.0), 26.0), 12)
+	var tot_p := PackedVector3Array()
+	var tot_c: Array = []
+	w.inst(boxG, T({"emissive": 0xffffff, "emissive_i": 0.7}), totems, func(p, d, i):
+		var h: float = 5.0 + p.s * 5.0
+		d.position = Vector3(p.x, p.y, p.z)
+		d.scale = Vector3(0.5, h, 0.5)
+		var c := col(pick([0xff5a9a, 0x7a6bff, 0x38e8ff]))
+		tot_p.append(Vector3(p.x, p.y + h, p.z))
+		tot_c.append(c)
+		obst(p, 0.6)
+		return c)
+	w.sprites(tot_p, tot_c, 4.5, {"blend": "add"})
+	birds(e.birds)
+
+
+# ------------------------------------------------------------------ Skyway: a pastel cloud city of floating islands
+func skyway() -> void:
+	# soft cloud mounds hugging the track edges and billowing just below the deck
+	var puffs := around(220, HW + 4.0, 120.0, 0.4)
+	w.inst(Geo.icosahedron(2.2, 1), T({"color": 0xffffff}), puffs, func(p, d, i):
+		var s: float = 1.2 + p.s * 2.6
+		d.position = Vector3(p.x, p.y - 1.0 - p.r * 4.0, p.z)
+		d.scale = Vector3(s * 1.6, s * 0.7, s * 1.5)
+		d.rotation.y = p.a
+		return tint(pick([0xffffff, 0xffe8f4, 0xe6eeff]), 0.4))
+	# floating islands: rocky underside, grassy cap, hovering above the clouds
+	var isles := slice(spaced(around(40, HW + 24.0, 150.0, 0.5), 40.0), 14)
+	for p in isles:
+		var hy: float = p.y + 12.0 + p.r * 30.0
+		var g := group(p.x, hy, p.z)
+		var sc: float = 5.0 + p.s * 8.0
+		var base := mesh(Geo.cone(sc, sc * 1.7, 7).translate(0, -sc * 0.85, 0), T({"color": 0x8a7a6a}), true)
+		base.rotation.y = p.a
+		g.add_child(base)
+		g.add_child(mesh(Geo.cylinder(sc, sc, sc * 0.4, 7).translate(0, 0, 0), T({"color": 0x9fd06a}), true))
+	# glowing sky-lanterns drifting along the route
+	var lanterns := slice(spaced(around(60, HW + 6.0, 40.0, 0.0), 16.0), 18)
+	var lan_p := PackedVector3Array()
+	var lan_c: Array = []
+	for p in lanterns:
+		lan_p.append(Vector3(p.x, p.y + 5.0 + p.r * 4.0, p.z))
+		lan_c.append(col(pick([0xfff0c0, 0xffd8ec, 0xc8e0ff])))
+	w.sprites(lan_p, lan_c, 4.0, {"blend": "add"})
+	birds(e.birds)
+
+
+# ------------------------------------------------------------------ Grid: a TRON-like neon void over a glowing lightgrid
+func grid_void() -> void:
+	var pal := [col(0x22e5ff), col(0xff6a1f), col(0xff2bd6)]
+	# glowing pylons flanking the circuit, a bright cap bar on each
+	var lamps: Array = []
+	var i := 6
+	while i < t.n:
+		if t.py[i] <= 0.05:
+			var s := 1.0 if (i / 14) % 2 == 0 else -1.0
+			var o := s * (HW + 2.4)
+			lamps.append({"x": t.px[i] + t.nx[i] * o, "z": t.pz[i] + t.nz[i] * o, "c": pal[(i / 14) % pal.size()]})
+		i += 14
+	w.inst(boxG, Mats.basic({"color": 0x0e1a26}), lamps, func(p, d, i2):
+		d.position = Vector3(p.x, 0, p.z)
+		d.scale = Vector3(0.3, 5.0, 0.3)
+		w.add_obstacle(p.x, p.z, 0.4))
+	w.inst(boxG, Mats.basic({"blend": "add"}), lamps, func(p, d, i2):
+		d.position = Vector3(p.x, 5.1, p.z)
+		d.scale = Vector3(0.55, 0.55, 0.55)
+		return p.c, false)
+	var glow_p := PackedVector3Array()
+	var glow_c: Array = []
+	for p in lamps:
+		glow_p.append(Vector3(p.x, 5.2, p.z))
+		glow_c.append(p.c)
+	w.sprites(glow_p, glow_c, 6.0, {"blend": "add"})
+	# light arches spanning the road, pulsing in a chase pattern (the Neon pattern, stripped back)
+	var arches: Array = []
+	var i3 := 30
+	while i3 < t.n - 30:
+		var skip := false
+		for c in t.cps:
+			if absi(c - i3) < 10:
+				skip = true
+		for o in [-8, 0, 8]:
+			if t.py[(i3 + o + t.n) % t.n] > 0.0:
+				skip = true
+		if not skip and w.other_road_dist(t.px[i3], t.pz[i3], i3) < HW * 2.0 + 6.0:
+			skip = true
+		if not skip:
+			arches.append(i3)
+		i3 += 50
+	var pil: Array = []
+	for j in arches.size():
+		var ai: int = arches[j]
+		for s: float in [-1.0, 1.0]:
+			pil.append({"x": t.px[ai] + t.nx[ai] * s * (HW + 2.0), "z": t.pz[ai] + t.nz[ai] * s * (HW + 2.0)})
+		var m := Mats.basic({"color": pal[j % pal.size()], "blend": "add"})
+		var b := mesh(Geo.box(HW * 2.0 + 4.6, 0.4, 0.4), m)
+		b.position = Vector3(t.px[ai], 9.0, t.pz[ai])
+		b.rotation.y = atan2(t.tx[ai], t.tz[ai]) + PI / 2.0
+		w.add_child(b)
+		var jj := j
+		w.anims.append(func(dt, tt): m.set_shader_parameter("opacity", 0.3 + 0.7 * maxf(0.0, sin(tt * 3.0 - jj * 0.9))))
+	w.inst(boxG, Mats.basic({"color": 0x0e1a26}), pil, func(p, d, i2):
+		d.position = Vector3(p.x, 0, p.z)
+		d.scale = Vector3(0.6, 9.2, 0.6)
+		w.add_obstacle(p.x, p.z, 0.6))
+	# floating wireframe monoliths drifting and slowly spinning in the void
+	var monos := slice(spaced(around(30, HW + 30.0, 160.0, 0.5), 44.0), 12)
+	var shapes := [Geo.icosahedron(1, 0), Geo.dodecahedron(1, 0), Geo.box(1.4, 1.4, 1.4), Geo.torus(1.0, 0.36, 10, 14)]
+	for j in monos.size():
+		var p: Dictionary = monos[j]
+		var hy: float = 8.0 + p.r * 40.0
+		var sc: float = 6.0 + p.s * 14.0
+		var wm := w.mesh_node(_wire(shapes[j % shapes.size()]), Mats.basic({"color": pal[j % pal.size()], "blend": "add"}))
+		wm.position = Vector3(p.x, hy, p.z)
+		wm.scale = Vector3(sc, sc, sc)
+		wm.rotation = Vector3(p.r * TAU, p.a, 0)
+		w.add_child(wm)
+		var spd: float = 0.1 + p.s * 0.25
+		w.anims.append(func(dt, tt): wm.rotation.y += dt * spd)
