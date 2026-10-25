@@ -1478,33 +1478,47 @@ func town() -> void:
 	birds(e.birds)
 
 
-# ------------------------------------------------------------------ Nocturne Bloom: a dark bioluminescent jungle
+# ------------------------------------------------------------------ Nocturne Bloom: a glowing bioluminescent forest
 func nocturne() -> void:
-	var trees := around(300, HW + 6.0, 85.0)
-	round_trees(trees, [0x14301f, 0x0f2a1c, 0x1a3a26, 0x10281a, 0x173320], 0.04)
-	# a faint emissive bloom haloing some canopies, in shifting neon hues
-	var glow_tops := slice(trees, 130)
+	# canopy — visible teal-green silhouettes under the moonlight
+	var trees := around(330, HW + 6.0, 90.0)
+	round_trees(trees, [0x225238, 0x1b4630, 0x2a5e3e, 0x184028, 0x306a46], 0.045)
+	# emissive bloom haloing most canopies, in shifting neon hues, with a bright crown sprite
+	var glow_tops := slice(trees, 220)
 	var halo_p := PackedVector3Array()
 	var halo_c: Array = []
-	w.inst(Geo.icosahedron(3.1, 1).translate(0, 4.6, 0), Mats.basic({"color": 0xffffff, "opacity": 0.12, "blend": "add"}), glow_tops, func(p, d, i):
+	w.inst(Geo.icosahedron(3.1, 1).translate(0, 4.6, 0), Mats.basic({"color": 0xffffff, "opacity": 0.22, "blend": "add"}), glow_tops, func(p, d, i):
 		var s: float = 0.8 + p.s * 0.8
 		d.position = Vector3(p.x, p.y, p.z)
 		d.scalar(s)
-		var c := col(pick([0x1fd6c0, 0xff4bd8, 0x7a6bff]))
+		var c := col(pick([0x1fd6c0, 0xff4bd8, 0x7a6bff, 0x6affc0]))
 		halo_p.append(Vector3(p.x, p.y + 4.6 * s, p.z))
 		halo_c.append(c)
 		return c, false)
-	w.sprites(halo_p, halo_c, 6.5, {"blend": "add"})
+	w.sprites(halo_p, halo_c, 8.0, {"blend": "add"})
+	# glowing understory shrubs dotted through the forest
+	var shrubs := land(around(180, HW + 5.0, 64.0, 0.2))
+	var shrub_p := PackedVector3Array()
+	var shrub_c: Array = []
+	w.inst(Geo.icosahedron(1.0, 1), Mats.basic({"color": 0xffffff, "opacity": 0.5, "blend": "add"}), shrubs, func(p, d, i):
+		var s: float = 0.7 + p.s * 1.0
+		d.position = Vector3(p.x, p.y + 0.5 * s, p.z)
+		d.scalar(s)
+		var c := col(pick([0x1fd6c0, 0xff4bd8, 0x7af0c0]))
+		shrub_p.append(Vector3(p.x, p.y + 0.6 * s, p.z))
+		shrub_c.append(c)
+		return c, false)
+	w.sprites(shrub_p, shrub_c, 2.8, {"blend": "add"})
 	# bioluminescent mushrooms lining the road: pale stems topped with glowing caps
-	var mush := land(around(150, HW + 4.0, 34.0, 0.0))
-	w.inst(Geo.cylinder(0.12, 0.2, 1, 6).translate(0, 0.5, 0), T({"color": 0x2a3a3a}), mush, func(p, d, i):
-		var s: float = 0.7 + p.s * 1.4
+	var mush := land(around(210, HW + 4.0, 38.0, 0.0))
+	w.inst(Geo.cylinder(0.12, 0.2, 1, 6).translate(0, 0.5, 0), T({"color": 0x30463e}), mush, func(p, d, i):
+		var s: float = 0.7 + p.s * 1.5
 		d.position = Vector3(p.x, p.y, p.z)
 		d.scale = Vector3(s, s * 1.4, s), false)
 	var cap_p := PackedVector3Array()
 	var cap_c: Array = []
-	w.inst(Geo.sphere(0.5, 8, 6, 0, TAU, 0, PI / 2.0), T({"emissive": 0xffffff, "emissive_i": 0.8}), mush, func(p, d, i):
-		var s: float = 0.7 + p.s * 1.4
+	w.inst(Geo.sphere(0.55, 8, 6, 0, TAU, 0, PI / 2.0), T({"emissive": 0xffffff, "emissive_i": 1.1}), mush, func(p, d, i):
+		var s: float = 0.7 + p.s * 1.5
 		d.position = Vector3(p.x, p.y + s * 1.4, p.z)
 		d.scale = Vector3(s, s * 0.7, s)
 		var c := col(pick([0x2ee6c8, 0xff4bd8, 0x7af0c0]))
@@ -1512,16 +1526,25 @@ func nocturne() -> void:
 		cap_c.append(c)
 		obst(p, 0.3 * s)
 		return c, false)
-	w.sprites(cap_p, cap_c, 3.6, {"blend": "add"})
-	# ground ferns glowing faintly between the trees
-	w.inst(Geo.cone(0.5, 1.4, 5).translate(0, 0.7, 0), anim({"color": 0x1a4a3a}, "sway", 0.05), around(220, HW + 3.0, 40.0, 0.05), func(p, d, i):
+	w.sprites(cap_p, cap_c, 4.4, {"blend": "add"})
+	# glowing moss pools on the forest floor by the road
+	var moss := land(around(110, HW + 3.0, 32.0, 0.0))
+	var disc := Geo.plane(5, 5)
+	disc.rotate_x(-PI / 2.0)
+	w.inst(disc, Mats.basic({"map": Tex.radial(), "opacity": 0.3, "blend": "add"}), moss, func(p, d, i):
+		d.position = Vector3(p.x, p.y + 0.08, p.z)
+		d.scalar(0.6 + p.s)
+		return col(pick([0x1fd6c0, 0x2a7a6a, 0x7a3a9a])), false)
+	# ground ferns swaying between the trees
+	w.inst(Geo.cone(0.5, 1.5, 5).translate(0, 0.75, 0), anim({"color": 0x255238}, "sway", 0.05), around(240, HW + 3.0, 42.0, 0.05), func(p, d, i):
 		var s: float = 0.6 + p.s
 		d.position = Vector3(p.x, p.y, p.z)
 		d.scale = Vector3(s, s, s)
 		d.rotation.y = p.a, false)
-	# drifting spores, in two colours
-	fireflies(70, 0x2ee6c8)
-	fireflies(45, 0xff4bd8)
+	# drifting spores, in three colours
+	fireflies(95, 0x2ee6c8)
+	fireflies(65, 0xff4bd8)
+	fireflies(45, 0x9a6bff)
 	birds(e.birds)
 
 
