@@ -791,6 +791,18 @@ func _build_menu() -> void:
 	chip.add_child(chiprow)
 	chip.pressed.connect(func(): game.copy_seed())
 	seedrow.add_child(chip)
+	# manual seed entry — compact button sharing the seed line to save vertical space
+	var manual := tap(PANEL, LINE, 12.0, 2.5)
+	seed_dialog_button = manual
+	manual.custom_minimum_size = Vector2(0, 42)
+	manual.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	manual.pad(14, 0, 14, 0)
+	manual.tooltip_text = "Enter a track code to race the exact same course as a friend."
+	var mlbl := L("Manual seed", "body", 700, 12, FG, false, 0.04, true)
+	mlbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	manual.add_child(center(mlbl))
+	manual.pressed.connect(func(): show_seed_dialog(true))
+	seedrow.add_child(manual)
 	trackhead.add_child(seedrow)
 	act_row = hbox(8)
 	var fb := _action_btn("star", "Save track", "Add to Tracks", "Save this track so you can find it later in the Tracks menu.")
@@ -1025,7 +1037,7 @@ func _build_track_pane(parent: Control) -> void:
 	lb_card_btn.pressed.connect(func(): show_leaderboard(true))
 	stat_row.add_child(lb_card_btn)
 	p.add_child(stat_row)
-	p.add_child(eyebrow("Track code"))
+	# seed input lives in the seed modal (opened from the "Manual seed" button on the seed row)
 	seed_in = LineEdit.new()
 	seed_in.placeholder_text = "Paste a seed, e.g. A7K2M9Q4B6N8P3RX"
 	seed_in.max_length = 24
@@ -1057,14 +1069,6 @@ func _build_track_pane(parent: Control) -> void:
 			seed_in.text = up
 			seed_in.caret_column = c)
 	seed_in.text_submitted.connect(func(_text): _submit_seed())
-	var seed_action := _cbtn("Race a track code", false, "ENTER")
-	seed_dialog_button = seed_action[0]
-	seed_dialog_button.pressed.connect(func(): show_seed_dialog(true))
-	p.add_child(seed_dialog_button)
-	var seed_note := L("Paste a 16-character code to race the same course as a friend.", "body", 400, 11, DIM)
-	seed_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	seed_note.custom_minimum_size = Vector2(120, 0)
-	p.add_child(seed_note)
 	render_leaderboard(null)
 
 
