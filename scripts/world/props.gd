@@ -1590,34 +1590,58 @@ func dusk_mesa() -> void:
 	birds(e.birds)
 
 
-# ------------------------------------------------------------------ Skyway: a pastel cloud city of floating islands
+# ------------------------------------------------------------------ Skyway: a floating cloud city in a bright sky
 func skyway() -> void:
-	# soft cloud mounds hugging the track edges and billowing just below the deck
-	var puffs := around(220, HW + 4.0, 120.0, 0.4)
-	w.inst(Geo.icosahedron(2.2, 1), T({"color": 0xffffff}), puffs, func(p, d, i):
-		var s: float = 1.2 + p.s * 2.6
-		d.position = Vector3(p.x, p.y - 1.0 - p.r * 4.0, p.z)
-		d.scale = Vector3(s * 1.6, s * 0.7, s * 1.5)
+	# a dense carpet of soft cloud mounds the road rides across, billowing up along both edges
+	var cloud_mat := T({"color": 0xffffff, "emissive": 0xffffff, "emissive_i": 0.3})
+	var edge := around(380, HW + 1.5, 52.0, 0.2)
+	w.inst(Geo.icosahedron(2.0, 1), cloud_mat, edge, func(p, d, i):
+		var s: float = 1.6 + p.s * 3.2
+		d.position = Vector3(p.x, p.y - 0.3 + p.r * 1.6, p.z)
+		d.scale = Vector3(s * 1.8, s * 0.6, s * 1.7)
 		d.rotation.y = p.a
-		return tint(pick([0xffffff, 0xffe8f4, 0xe6eeff]), 0.4))
-	# floating islands: rocky underside, grassy cap, hovering above the clouds
-	var isles := slice(spaced(around(40, HW + 24.0, 150.0, 0.5), 40.0), 14)
-	for p in isles:
-		var hy: float = p.y + 12.0 + p.r * 30.0
+		return tint(pick([0xffffff, 0xf2f6ff, 0xeaf0ff, 0xfbeefc]), 0.22))
+	# towering cloud banks rising out of the sea in the mid-distance and on the horizon
+	var banks := slice(spaced(around(150, HW + 36.0, 230.0, 0.6), 30.0), 90)
+	w.inst(Geo.icosahedron(2.2, 1), cloud_mat, banks, func(p, d, i):
+		var s: float = 4.5 + p.s * 11.0
+		d.position = Vector3(p.x, p.y + 0.5 + p.r * 9.0, p.z)
+		d.scale = Vector3(s * 1.7, s * 0.85, s * 1.6)
+		d.rotation.y = p.a
+		return tint(pick([0xffffff, 0xeef4ff, 0xf6eefc]), 0.2))
+	# the floating sky-city: rock platforms resting on a wisp of cloud, topped with pastel towers
+	var isles := slice(spaced(around(52, HW + 18.0, 150.0, 0.5), 34.0), 18)
+	var tower_pal := [0xffffff, 0xe6ecff, 0xd6ddf5, 0xc8d4f0, 0xf0e4fb]
+	for j in isles.size():
+		var p: Dictionary = isles[j]
+		var hy: float = p.y + 9.0 + p.r * 32.0
 		var g := group(p.x, hy, p.z)
-		var sc: float = 5.0 + p.s * 8.0
-		var base := mesh(Geo.cone(sc, sc * 1.7, 7).translate(0, -sc * 0.85, 0), T({"color": 0x8a7a6a}), true)
+		var sc: float = 5.0 + p.s * 7.0
+		var base := mesh(Geo.cone(sc, sc * 1.9, 7).translate(0, -sc * 0.95, 0), T({"color": 0x9aa6c4}), true)
 		base.rotation.y = p.a
 		g.add_child(base)
-		g.add_child(mesh(Geo.cylinder(sc, sc, sc * 0.4, 7).translate(0, 0, 0), T({"color": 0x9fd06a}), true))
+		g.add_child(mesh(Geo.cylinder(sc, sc * 1.02, sc * 0.34, 7), T({"color": 0xe4ecff}), true))
+		# a small skyline of towers of varying height
+		var towers := 3 + int(R() * 3.0)
+		for k in towers:
+			var th: float = sc * (0.7 + R() * 1.7)
+			var tw := mesh(boxG, T({"color": pick(tower_pal)}), true)
+			tw.scale = Vector3(sc * (0.2 + R() * 0.12), th, sc * (0.2 + R() * 0.12))
+			tw.position = Vector3((R() - 0.5) * sc * 1.1, sc * 0.17 + th * 0.5, (R() - 0.5) * sc * 1.1)
+			g.add_child(tw)
+		# a flat cloud wisp clinging under the island
+		var wisp := mesh(Geo.icosahedron(sc * 1.4, 1), T({"color": 0xf4f8ff}))
+		wisp.scale = Vector3(1.0, 0.32, 1.0)
+		wisp.position.y = -sc * 0.5
+		g.add_child(wisp)
 	# glowing sky-lanterns drifting along the route
-	var lanterns := slice(spaced(around(60, HW + 6.0, 40.0, 0.0), 16.0), 18)
+	var lanterns := slice(spaced(around(72, HW + 6.0, 44.0, 0.0), 15.0), 22)
 	var lan_p := PackedVector3Array()
 	var lan_c: Array = []
 	for p in lanterns:
-		lan_p.append(Vector3(p.x, p.y + 5.0 + p.r * 4.0, p.z))
-		lan_c.append(col(pick([0xfff0c0, 0xffd8ec, 0xc8e0ff])))
-	w.sprites(lan_p, lan_c, 4.0, {"blend": "add"})
+		lan_p.append(Vector3(p.x, p.y + 4.0 + p.r * 5.0, p.z))
+		lan_c.append(col(pick([0xfff0c0, 0xffd8ec, 0xc8e0ff, 0xbfe6ff])))
+	w.sprites(lan_p, lan_c, 3.8, {"blend": "add"})
 	birds(e.birds)
 
 
