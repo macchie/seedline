@@ -1087,17 +1087,19 @@ func _build_events_pane(parent: Control) -> void:
 	events_grid.add_theme_constant_override("v_separation", 10)
 	events_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	events_body.add_child(events_grid)
-	_build_event_card(events_grid, "daily", "Daily Seed", "A fresh seed every day. Set the fastest time before midnight UTC.")
-	_build_event_card(events_grid, "weekly", "Weekly Seed", "One seed all week. Grind for the top of the board.")
+	_build_event_card(events_grid, "daily", "Daily Seed")
+	_build_event_card(events_grid, "weekly", "Weekly Seed")
 
 
-## One challenge card (daily or weekly): title + countdown, the featured seed, your rank, top times, Race.
-func _build_event_card(parent: Control, kind: String, title: String, blurb: String) -> void:
+## One challenge card (daily or weekly): title + countdown, the featured track (minimap, name,
+## environment, your best), the seed, your rank, top times and Race. Stretches to fill the grid.
+func _build_event_card(parent: Control, kind: String, title: String) -> void:
 	var card := glass(PANEL2, LINE, 14.0)
 	card.pad(14, 12, 14, 14)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.size_flags_vertical = Control.SIZE_FILL
-	var col := vbox(9)
+	var col := vbox(10)
+	col.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	card.add_child(col)
 	var head := hbox(8)
 	var title_lbl := L(title, "display", 800, 16, FG, true, 0.04, true)
@@ -1108,10 +1110,34 @@ func _build_event_card(parent: Control, kind: String, title: String, blurb: Stri
 	head.add_child(title_lbl)
 	head.add_child(cd)
 	col.add_child(head)
-	var blurb_lbl := L(blurb, "body", 400, 11, DIM)
-	blurb_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	blurb_lbl.custom_minimum_size = Vector2(1, 0)
-	col.add_child(blurb_lbl)
+	# featured track: minimap on the left, name + environment + best time on the right
+	var feat := hbox(12)
+	var pbox := glass(Color(0, 0, 0, 0.26), LINE, 10.0)
+	pbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pbox.pad(4, 4, 4, 4)
+	var preview := MapView.new()
+	preview.preview = true
+	preview.custom_minimum_size = Vector2(104, 104)
+	pbox.add_child(preview)
+	feat.add_child(pbox)
+	var info := vbox(3)
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	info.alignment = BoxContainer.ALIGNMENT_CENTER
+	var name_lbl := L("—", "display", 800, 19, FG, true, 0.0, true)
+	name_lbl.clip_text = true
+	name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_lbl.custom_minimum_size = Vector2(1, 0)
+	info.add_child(name_lbl)
+	var env_lbl := L("—", "body", 600, 10, DIM, false, 0.08, true)
+	env_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	env_lbl.custom_minimum_size = Vector2(1, 0)
+	info.add_child(env_lbl)
+	var best_lbl := L("NOT RACED YET", "mono", 700, 13, DIM, false, 0.02)
+	best_lbl.custom_minimum_size = Vector2(0, 6)
+	info.add_child(best_lbl)
+	feat.add_child(info)
+	col.add_child(feat)
 	# featured seed (tap to copy)
 	var chip := tap(PANEL2, Color(1, 1, 1, 0.2), 10.0)
 	chip.dash = 6.0
@@ -1134,6 +1160,7 @@ func _build_event_card(parent: Control, kind: String, title: String, blurb: Stri
 	var rank_lbl := L("NOT RACED YET", "body", 700, 11, DIM, false, 0.08, true)
 	col.add_child(rank_lbl)
 	var top_box := vbox(4)
+	top_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(top_box)
 	var race := tap(accent, Color(0, 0, 0, 0), 12.0)
 	race.custom_minimum_size = Vector2(0, 44)
@@ -1143,7 +1170,7 @@ func _build_event_card(parent: Control, kind: String, title: String, blurb: Stri
 	race.set_meta("lbl", rl)
 	col.add_child(race)
 	parent.add_child(card)
-	var entry := {"card": card, "cd": cd, "seed_lbl": seed_lbl, "rank_lbl": rank_lbl, "top_box": top_box, "race": race, "seed": "", "ends_at": 0.0}
+	var entry := {"card": card, "cd": cd, "seed_lbl": seed_lbl, "rank_lbl": rank_lbl, "top_box": top_box, "race": race, "map": preview, "name_lbl": name_lbl, "env_lbl": env_lbl, "best_lbl": best_lbl, "seed": "", "gen_seed": "", "ends_at": 0.0}
 	event_cards[kind] = entry
 	chip.pressed.connect(func():
 		if entry.seed != "":
@@ -1151,6 +1178,9 @@ func _build_event_card(parent: Control, kind: String, title: String, blurb: Stri
 			toast("Seed copied"))
 	race.pressed.connect(func():
 		if entry.seed != "":
+			hide_section()
+			if btn_play:
+				btn_play.grab_focus()
 			game.load_event_seed(entry.seed))
 
 
@@ -1174,6 +1204,7 @@ func render_events(data: Dictionary) -> void:
 		c.seed = str(ev.get("seed", ""))
 		c.ends_at = float(ev.get("ends_at", 0))
 		c.seed_lbl.text = c.seed if c.seed != "" else "—"
+		_update_event_track(c)
 		var me = ev.get("me")
 		var me_rank := int(me.get("rank", 0)) if me is Dictionary else 0
 		if me_rank > 0:
@@ -1198,6 +1229,34 @@ func render_events(data: Dictionary) -> void:
 				var rk := int(t.get("rank", shown))
 				c.top_box.add_child(_event_row(rk, str(t.get("name", "racer")), float(t.get("time_ms", 0)) / 1000.0, rk == me_rank))
 	relayout()
+
+
+## Populate a card's featured-track widgets (minimap, name, environment, best time) from its seed.
+## The minimap + name + environment only change when the seed does, so generation is skipped otherwise.
+func _update_event_track(c: Dictionary) -> void:
+	var seed_s: String = c.seed
+	if seed_s == "":
+		c.name_lbl.text = "—"
+		c.env_lbl.text = "—"
+		c.best_lbl.text = "NOT RACED YET"
+		c.best_lbl.add_theme_color_override("font_color", DIM)
+		c.gen_seed = ""
+		return
+	var bt = _best_time(seed_s)
+	c.best_lbl.text = ("YOUR BEST " + U.fmt(bt)) if bt != null else "NOT RACED YET"
+	c.best_lbl.add_theme_color_override("font_color", accent if bt != null else DIM)
+	if c.gen_seed == seed_s:
+		return
+	c.gen_seed = seed_s
+	var parsed = game.parse_seed(seed_s)
+	var env_s := str(parsed.env) if parsed != null else "CANYON"
+	if not Envs.DATA.has(env_s):
+		env_s = "CANYON"
+	var acc := U.css(Envs.DATA[env_s].accent)
+	var td := TrackGen.generate(str(parsed.seed) if parsed != null else seed_s, env_s)
+	c.map.set_track(td, acc)
+	c.name_lbl.text = td.name.to_upper()
+	c.env_lbl.text = (str(Envs.DATA[env_s].name) + " · " + ("%.2f" % (td.length / 1000.0)) + " km · " + str(U.LAPS) + " laps · " + str(td.cps.size()) + " CP").to_upper()
 
 
 func _event_row(rank: int, name: String, time_s: float, mine: bool) -> Control:
@@ -1529,6 +1588,8 @@ func show_track_action(seed_s: String, env_s: String, title: String, is_fav: boo
 	track_action_remove.visible = is_fav
 	track_action_preview.t = null
 	track_action_preview.set_track(_cached_fav_track(seed_s, env_s), acc)
+	# draw above the tracks section it was opened from (built earlier, so a lower sibling)
+	move_child(track_action_modal, get_child_count() - 1)
 	track_action_modal.visible = true
 	_set_stick_direction(Vector2i.ZERO)
 	relayout()
@@ -1553,8 +1614,11 @@ func _track_action_do(kind: String) -> void:
 	var e := _track_action_env
 	hide_track_action()
 	if kind == "race":
+		# close the tracks dialog so the race (and the Play screen behind it) isn't covered
+		hide_section()
 		game.race_track(s, e)
 	elif kind == "watch":
+		hide_section()
 		game.replay_track(s, e)
 	elif kind == "remove":
 		game.remove_fav(s)
@@ -4485,6 +4549,14 @@ func _process(_dt: float) -> void:
 				b.custom_minimum_size.y = b.size.x
 	# live countdowns on the event cards
 	if menu_on and not event_cards.is_empty() and section_modal != null and section_modal.visible and _section_key == "events":
+		# stretch the grid to fill the panel so the cards span all the available height
+		if section_scroll != null and events_grid != null:
+			var gh := section_scroll.size.y
+			if events_note.visible:
+				gh -= events_note.get_combined_minimum_size().y + 12.0
+			gh = maxf(260.0, gh)
+			if absf(events_grid.custom_minimum_size.y - gh) > 0.5:
+				events_grid.custom_minimum_size.y = gh
 		var server_now := _events_now + float(Time.get_ticks_msec() - _events_t0) / 1000.0
 		for kind in event_cards:
 			var c: Dictionary = event_cards[kind]
