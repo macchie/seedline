@@ -19,18 +19,20 @@ const SWATCHES := ["#e8402c", "#ff8a1f", "#f2c230", "#2ec27e", "#1fb6c9", "#1f6f
 const FINISHES := [["gloss", "Gloss"], ["satin", "Satin"], ["matte", "Matte"], ["brushed", "Brushed"], ["metal", "Metallic"], ["pearl", "Pearl"], ["candy", "Candy"], ["chrome", "Chrome"]]
 const BOOST_SWATCHES := ["#38e8ff", "#3fb4ff", "#ff9a3c", "#d25bff", "#2ec27e", "#ff4f78", "#f2c230", "#8cff4f", "#eef1f5"]
 
-# Named driver tiers mapped from the global PP rating (ascending floors). Tune the floors as real
-# player data lands; the names and colours are what the player actually sees on the finish card and
-# account screen.
-const RANKS := [
-	{"pp": 0, "name": "Rookie", "col": Color("#8e97a7")},
-	{"pp": 300, "name": "Driver", "col": Color("#cf8752")},
-	{"pp": 800, "name": "Pro", "col": Color("#c9cfd8")},
-	{"pp": 1500, "name": "Ace", "col": Color("#3ddc84")},
-	{"pp": 2400, "name": "Veteran", "col": Color("#4fb2ff")},
-	{"pp": 3500, "name": "Master", "col": Color("#7a4dff")},
-	{"pp": 5000, "name": "Grandmaster", "col": Color("#f5c542")},
-]
+# Rocket League–style competitive medals. The server decides a player's tier + division from their
+# global percentile and sends it down; this is just the display name and colour per tier id. `order`
+# (tier index) drives promotion detection on the finish card.
+const MEDAL_TIERS := {
+	"bronze": {"name": "Bronze", "col": Color("#cf8752"), "order": 0},
+	"silver": {"name": "Silver", "col": Color("#c9cfd8"), "order": 1},
+	"gold": {"name": "Gold", "col": Color("#f5c542"), "order": 2},
+	"platinum": {"name": "Platinum", "col": Color("#49e0cf"), "order": 3},
+	"diamond": {"name": "Diamond", "col": Color("#4fb2ff"), "order": 4},
+	"champion": {"name": "Champion", "col": Color("#9b6bff"), "order": 5},
+	"grand_champion": {"name": "Grand Champion", "col": Color("#ff5aa0"), "order": 6},
+	"supersonic": {"name": "Supersonic Legend", "col": Color("#e6e2ff"), "order": 7},
+}
+const DIVISION_NUMERALS := ["", "I", "II", "III", "IV"]
 
 # Achievement catalogue (client view): id → display + how to read progress out of the progression
 # payload. `stat` keys: runs, tracks, environments, event_count, medals_any/gold/author. A missing
@@ -185,6 +187,7 @@ var f_badge: Label
 var pp_stat: Label           # global PP shown on the account screen
 var season_stat: Label
 var _global_pp := 0.0
+var _medal_order := -1       # tier index of the player's current global medal, -1 while unranked
 var lb_chase_btn: Tap
 var lb_chase_label: Label
 var swatch_box: GridContainer
@@ -2031,7 +2034,7 @@ func _build_account_modal() -> void:
 	pp_col.add_child(L("Global rating", "body", 600, 10, DIM, false, 0.16, true))
 	pp_stat = L("0 PP", "display", 800, 22, accent, true, 0.02, true)
 	pp_col.add_child(pp_stat)
-	rank_stat = L("ROOKIE", "body", 700, 11, FG, false, 0.12, true)
+	rank_stat = L("UNRANKED", "body", 700, 11, DIM, false, 0.12, true)
 	pp_col.add_child(rank_stat)
 	season_stat = L("SEASON · 0 PP", "body", 600, 10, DIM, false, 0.08, true)
 	pp_col.add_child(season_stat)
@@ -3059,7 +3062,13 @@ func _render_lbd() -> void:
 		lbd_hero_rank.text = "#%d" % int(me.rank)
 		lbd_hero_rank.add_theme_color_override("font_color", accent)
 		lbd_hero_val.text = _fmt_board_value(lbd_board, float(me.get("value", 0.0)))
-		lbd_hero_sub.text = "Your rank"
+		# the global board carries the player's RL-style medal; surface it beside the rank
+		if lbd_board == "global" and me.get("medal") is Dictionary:
+			lbd_hero_sub.text = _medal_name(me.medal)
+			lbd_hero_sub.add_theme_color_override("font_color", _medal_col(me.medal))
+		else:
+			lbd_hero_sub.text = "Your rank"
+			lbd_hero_sub.add_theme_color_override("font_color", DIM)
 	else:
 		lbd_hero_rank.text = "\u2014"
 		lbd_hero_rank.add_theme_color_override("font_color", DIM)
@@ -3992,32 +4001,42 @@ func set_finish_rank(info) -> void:
 		f_rank.visible = false
 
 
-## Performance Points earned on this run and the resulting global total, shown on the finish card.
-func set_finish_pp(pp, prev_global := -1.0) -> void:
+## Performance Points earned on this run plus the resulting global total and medal, on the finish card.
+## prev_medal is the player's tier order before the run (captured at finish) so a promotion can flash.
+func set_finish_pp(pp, prev_medal := -2) -> void:
 	if not (pp is Dictionary):
 		f_pp.visible = false
 		f_rankup.visible = false
 		return
 	var track_pp := int(round(float(pp.get("track_pp", 0.0))))
-	var old_pp: float = prev_global if prev_global >= 0.0 else _global_pp
 	var new_pp := float(pp.get("global_pp", _global_pp))
 	set_global_pp(new_pp)
-	var tier := rank_for(new_pp)
+	var rank := int(pp.get("rank", 0))
+	var medal = pp.get("medal")
+	var old_order: int = prev_medal if prev_medal > -2 else _medal_order
+	set_medal(medal)
 	var season = pp.get("season", {})
 	var season_total := int(round(float(season.get("global_pp", 0.0)))) if season is Dictionary else 0
-	var txt := "%d PP · %s · SEASON %d" % [track_pp, str(tier.name).to_upper(), season_total]
+	var txt := "%d PP" % track_pp
+	if rank > 0:
+		txt += " · WORLD #%d" % rank
+	if medal is Dictionary:
+		txt += " · " + _medal_name(medal).to_upper()
+	txt += " · SEASON %d" % season_total
 	if bool(pp.get("improved", false)):
 		txt += "  ·  BEST"
 	f_pp.text = txt
 	f_pp.add_theme_color_override("font_color", accent if track_pp > 0 else DIM)
 	f_pp.visible = true
-	# a crossing into a higher driver tier is the headline moment of the finish card
-	if new_pp > 0.0 and int(tier.idx) > int(rank_for(old_pp).idx):
-		f_rankup.text = ("Rank up — " + str(tier.name)).to_upper()
-		f_rankup.add_theme_color_override("font_color", tier.col)
+	# climbing into a higher medal tier is the headline moment of the finish card
+	var new_order := _medal_order
+	if new_order > old_order and old_order >= 0 and medal is Dictionary:
+		var tier_name := _medal_name(medal)
+		f_rankup.text = ("Rank up — " + tier_name).to_upper()
+		f_rankup.add_theme_color_override("font_color", _medal_col(medal))
 		f_rankup.visible = true
 		_pop(f_rankup)
-		toast("Rank up: " + str(tier.name))
+		toast("Rank up: " + tier_name)
 	else:
 		f_rankup.visible = false
 	if season is Dictionary:
@@ -4028,44 +4047,52 @@ func set_global_pp(v: float) -> void:
 	_global_pp = v
 	if pp_stat:
 		pp_stat.text = "%s PP" % _fmt_pp(v)
-	_sync_rank_stat()
 
 
-## Map the current global PP to its named driver tier and the PP remaining to the next one.
-func rank_for(pp: float) -> Dictionary:
-	var idx := 0
-	for i in RANKS.size():
-		if pp >= float(RANKS[i].pp):
-			idx = i
-	var cur: Dictionary = RANKS[idx]
-	var has_next := idx + 1 < RANKS.size()
-	var nxt: Dictionary = RANKS[idx + 1] if has_next else cur
-	return {
-		"idx": idx,
-		"name": cur.name,
-		"col": cur.col,
-		"next_name": nxt.name if has_next else "",
-		"to_next": maxf(0.0, float(nxt.pp) - pp) if has_next else 0.0,
-	}
+## The player's current global medal tier order (-1 unranked); captured before a run for promotion detection.
+func current_medal_order() -> int:
+	return _medal_order
 
 
-func _sync_rank_stat() -> void:
-	if rank_stat == null:
-		return
-	var r := rank_for(_global_pp)
-	var line := str(r.name).to_upper()
-	if r.to_next > 0.0:
-		line += " · +%d PP TO %s" % [int(ceil(r.to_next)), str(r.next_name).to_upper()]
-	rank_stat.text = line
-	rank_stat.add_theme_color_override("font_color", r.col)
+## Full medal name including its division numeral, e.g. "Diamond III" (apex tier has no division).
+func _medal_name(medal) -> String:
+	if not (medal is Dictionary):
+		return "Unranked"
+	var tier: Dictionary = MEDAL_TIERS.get(str(medal.get("id", "")), {})
+	var base := str(tier.get("name", "Unranked"))
+	var div := int(medal.get("division", 0))
+	if div >= 1 and div <= 4:
+		base += " " + DIVISION_NUMERALS[div]
+	return base
 
 
-## The seedline_pp payload: global total, world rank and most valuable tracks.
+func _medal_col(medal) -> Color:
+	if not (medal is Dictionary):
+		return DIM
+	return MEDAL_TIERS.get(str(medal.get("id", "")), {}).get("col", DIM)
+
+
+## Paint the account-screen medal badge and remember the tier order for promotion detection.
+func set_medal(medal) -> void:
+	if medal is Dictionary and MEDAL_TIERS.has(str(medal.get("id", ""))):
+		_medal_order = int(MEDAL_TIERS[str(medal.id)].order)
+		if rank_stat:
+			rank_stat.text = _medal_name(medal).to_upper()
+			rank_stat.add_theme_color_override("font_color", _medal_col(medal))
+	else:
+		_medal_order = -1
+		if rank_stat:
+			rank_stat.text = "UNRANKED"
+			rank_stat.add_theme_color_override("font_color", DIM)
+
+
+## The seedline_pp payload: global total, world rank, medal and most valuable tracks.
 func render_pp(data: Dictionary) -> void:
 	set_global_pp(float(data.get("global_pp", _global_pp)))
 	if pp_stat:
 		var rank := int(data.get("rank", 0))
 		pp_stat.text = ("%s PP · WORLD #%d" % [_fmt_pp(_global_pp), rank]) if rank > 0 else ("%s PP" % _fmt_pp(_global_pp))
+	set_medal(data.get("medal"))
 	var season = data.get("season", {})
 	if season is Dictionary:
 		_set_season_stat(season)

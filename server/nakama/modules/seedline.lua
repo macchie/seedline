@@ -82,6 +82,42 @@ local function medal_counts(medals)
   return { any = any, gold = gold, author = author }
 end
 
+-- Rocket League–style competitive medal, layered on top of the (still-visible) PP number. A player's
+-- tier is purely their global percentile: `top` is the cumulative fraction of ranked players, from the
+-- very top, that this tier reaches. Each tier (except the apex) splits into four divisions, IV at the
+-- top edge of the band down to I at the bottom — so progress shows even within a tier.
+local RANK_TIERS = {
+  { id = "supersonic",     name = "Supersonic Legend", top = 0.003, div = false },
+  { id = "grand_champion", name = "Grand Champion",    top = 0.015 },
+  { id = "champion",       name = "Champion",          top = 0.06 },
+  { id = "diamond",        name = "Diamond",           top = 0.15 },
+  { id = "platinum",       name = "Platinum",          top = 0.32 },
+  { id = "gold",           name = "Gold",              top = 0.55 },
+  { id = "silver",         name = "Silver",            top = 0.80 },
+  { id = "bronze",         name = "Bronze",            top = 1.01 },
+}
+
+local function medal_rank_for(rank, total)
+  if type(rank) ~= "number" or rank < 1 or type(total) ~= "number" or total < 1 then
+    return nil
+  end
+  local p = rank / total
+  local prev = 0.0
+  for _, tier in ipairs(RANK_TIERS) do
+    if p <= tier.top then
+      local division = nil
+      if tier.div ~= false then
+        local span = tier.top - prev
+        local f = span > 0.0 and (tier.top - p) / span or 1.0
+        division = math.max(1, math.min(4, math.floor(f * 4) + 1))
+      end
+      return { id = tier.id, name = tier.name, division = division, rank = rank, players = total, percentile = p }
+    end
+    prev = tier.top
+  end
+  return nil
+end
+
 local SYSTEM = "00000000-0000-0000-0000-000000000000"
 local PERM_NONE, PERM_PUBLIC = 0, 2
 
@@ -926,7 +962,19 @@ local function update_player_pp(uid, run, stats_doc, new_player)
   if new_player then
     pcall(nk.leaderboard_record_write, "tracks_explored", uid, "", explored, 0, { tracks = explored })
   end
-  return { track_pp = track_pp, global_pp = global, z = z, players = n, improved = true }
+  -- fresh world rank for the just-written score, turned into the RL-style medal shown on the finish card
+  local rank = 0
+  local ok_h, hay = pcall(nk.leaderboard_records_haystack, "global_pp", uid, 1)
+  if ok_h and hay ~= nil then
+    for _, h in ipairs(hay) do
+      if h.owner_id == uid then
+        rank = h.rank or 0
+      end
+    end
+  end
+  local ranked = counter_total("players_total")
+  return { track_pp = track_pp, global_pp = global, z = z, players = n, improved = true,
+    rank = rank, ranked_players = ranked, medal = medal_rank_for(rank, ranked) }
 end
 
 local function season_period()
@@ -1187,9 +1235,12 @@ local function rpc_pp(context, _payload)
   local season_doc = read_doc("profile", "season_pp", uid) or {}
   local season_standings = board_standings("season_pp", uid, CFG.top_limit)
   local season_me_rank = season_standings.me and season_standings.me.rank or 0
+  local ranked = counter_total("players_total")
   return nk.json_encode({
     global_pp = doc.global or 0.0,
     rank = rank,
+    ranked_players = ranked,
+    medal = medal_rank_for(rank, ranked),
     tracks_scored = #arr,
     top = top,
     top_players = players,
@@ -1217,8 +1268,12 @@ local function rpc_leaderboards(context, _payload)
     end
     return { top = top, me = me }
   end
+  local global = board("global_pp", PP.score_scale)
+  if global.me ~= nil then
+    global.me.medal = medal_rank_for(global.me.rank, counter_total("players_total"))
+  end
   return nk.json_encode({
-    global = board("global_pp", PP.score_scale),
+    global = global,
     explorers = board("tracks_explored", 1),
   })
 end

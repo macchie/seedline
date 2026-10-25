@@ -926,7 +926,7 @@ func finish_race(t: float) -> void:
 				f.best = t
 				Store.set_value("favs", favs)
 	run_info = null
-	var prev_pp := net.global_pp
+	var prev_medal := ui.current_medal_order()
 	var m = CarSim.medal_for(t, track.medals)
 	if net.eligible(track.seed):
 		net.submit_run(track.seed, track.env_key, t, track.length, splits, U.LAPS, server_ghost_rec if server_ghost_complete else [], str(m) if m != null else "")
@@ -947,7 +947,7 @@ func finish_race(t: float) -> void:
 		ui.set_finish_rank(run_info)
 		ui.set_finish_rival(rival_ghost_fleet.target_name(), rival_ghost_fleet.target_time(), t)
 		if last_pp is Dictionary:
-			ui.set_finish_pp(last_pp, prev_pp)
+			ui.set_finish_pp(last_pp, prev_medal)
 		if not last_events.is_empty():
 			ui.set_finish_events(last_events)
 		if not last_new_achievements.is_empty():
