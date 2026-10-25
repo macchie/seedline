@@ -1398,25 +1398,29 @@ func _track_tile(seed_s: String, env_s: String, title: String, show_remove: bool
 	name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_lbl.custom_minimum_size = Vector2(1, 0)
 	col.add_child(name_lbl)
-	var meta := hbox(5)
+	var meta := vbox(2)
+	# seed is always shown so every tile stays shareable, best time sits on its own line below
+	var seed_lbl := L(seed_s, "mono", 500, 10, DIM)
+	seed_lbl.clip_text = true
+	seed_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	seed_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	meta.add_child(seed_lbl)
 	var bt = _best_time(seed_s)
-	if bt != null:
-		var seed_lbl := L("BEST " + U.fmt(bt), "mono", 500, 10, accent)
-		seed_lbl.clip_text = true
-		seed_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		meta.add_child(seed_lbl)
-	else:
-		var seed_lbl := L(seed_s, "mono", 500, 10, DIM)
-		seed_lbl.clip_text = true
-		seed_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		seed_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		meta.add_child(seed_lbl)
-	if _has_replay(seed_s):
-		var r := Icon.new("respawn", 13)
-		r.color = accent
-		r.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		r.tooltip_text = "Replay available"
-		meta.add_child(r)
+	var has_replay := _has_replay(seed_s)
+	if bt != null or has_replay:
+		var line := hbox(5)
+		if bt != null:
+			var best_lbl := L("BEST " + U.fmt(bt), "mono", 500, 10, accent)
+			best_lbl.clip_text = true
+			best_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			line.add_child(best_lbl)
+		if has_replay:
+			var r := Icon.new("respawn", 13)
+			r.color = accent
+			r.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			r.tooltip_text = "Replay available"
+			line.add_child(r)
+		meta.add_child(line)
 	col.add_child(meta)
 	cell.add_child(col)
 	var env_final := env_s
