@@ -53,7 +53,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeNavigation();
 });
 
-const revealItems = document.querySelectorAll(".feature-card, .platform-card, .faq-list details");
+const revealItems = document.querySelectorAll(".feature-card, .env-tile, .platform-card, .faq-list details");
 if ("IntersectionObserver" in window && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
   const observer = new IntersectionObserver(
     (entries, currentObserver) => {

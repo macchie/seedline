@@ -3,65 +3,73 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#111411" />
+    <meta name="theme-color" content="#07070e" />
     <meta
       name="description"
-      content="Seedline is a precision time-trial racer where every 16-character code creates a new circuit. Find your line, chase your best, and share the road."
+      content="Seedline is a deterministic time-trial racer where every 16-character seed builds a repeatable circuit. Race it, record a best, share the code, and chase the time."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Seedline — race the unwritten" />
+    <meta property="og:title" content="Seedline — one seed, one circuit" />
     <meta
       property="og:description"
-      content="One code. A new circuit. A precision time-trial racer built around endlessly replayable seeded tracks."
+      content="A precision time-trial racer built around endlessly replayable seeded tracks across sixteen worlds."
     />
     <meta property="og:image" content="./screenshots/race.webp" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <title>Seedline — race the unwritten</title>
+    <link rel="preload" as="image" href="./screenshots/race.webp" />
+    <title>Seedline — one seed, one circuit</title>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
+    <div class="bg-aurora" aria-hidden="true"></div>
+    <div class="bg-grid" aria-hidden="true"></div>
+
     <header class="site-header">
-      <a class="brand" href="#top" aria-label="Seedline home">
-        <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 32 32" fill="none">
-            <path d="M6 22.5 11.2 8l14.8 5.2-5.2 14.2L6 22.5Z" />
-            <path d="m11.2 8 4.5 8.1 10.3-2.9M15.7 16.1 6 22.5" />
-          </svg>
-        </span>
-        <span>SEED<span class="brand-accent">LINE</span></span>
-      </a>
-      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="primary-nav">
-        <span class="sr-only">Open navigation</span>
-        <span></span><span></span>
-      </button>
-      <nav class="primary-nav" id="primary-nav" aria-label="Main navigation">
-        <a href="#features">The game</a>
-        <a href="#worlds">Worlds</a>
-        <a href="#downloads">Downloads</a>
-        <a href="#faq">FAQ</a>
-      </nav>
-      <a class="header-cta" href="#downloads">
-        <span>Find your platform</span>
-        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11m-5-5 5 5-5 5" /></svg>
-      </a>
+      <div class="page-width header-inner">
+        <a class="brand" href="#top" aria-label="Seedline home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none">
+              <path d="M6 22.5 11.2 8l14.8 5.2-5.2 14.2L6 22.5Z" />
+              <path d="m11.2 8 4.5 8.1 10.3-2.9M15.7 16.1 6 22.5" />
+            </svg>
+          </span>
+          <span>SEED<span class="brand-accent">LINE</span></span>
+        </a>
+        <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="primary-nav">
+          <span class="sr-only">Open navigation</span>
+          <span></span><span></span>
+        </button>
+        <nav class="primary-nav" id="primary-nav" aria-label="Main navigation">
+          <a href="#features">The game</a>
+          <a href="#worlds">Worlds</a>
+          <a href="#downloads">Downloads</a>
+          <a href="#faq">FAQ</a>
+          <a class="nav-ghost" href="https://github.com" rel="noopener">GitHub</a>
+        </nav>
+        <a class="header-cta" href="#downloads">
+          <span>Get the game</span>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11m-5-5 5 5-5 5" /></svg>
+        </a>
+      </div>
     </header>
 
     <main id="main">
       <section class="hero" id="top">
         <div class="hero-grid page-width">
           <div class="hero-copy">
-            <p class="eyebrow"><span class="pulse-dot"></span> A seed-built time-trial racer</p>
-            <h1>Race the<br /><span>unwritten.</span></h1>
+            <p class="eyebrow"><span class="pulse-dot"></span> Deterministic time-trial racer · Godot 4</p>
+            <h1>One seed.<br /><span>One circuit.</span></h1>
             <p class="hero-lede">
-              One code makes a circuit. Your line makes it yours. Find the perfect run in a racer
-              built for one more lap.
+              Every 16-character code builds the same track, every time. Find the line, record a best,
+              share the seed, and let the next driver chase your ghost.
             </p>
             <div class="hero-actions">
               <a class="button button-bright" href="#downloads">
-                Find your platform
+                Get the game
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11m-5-5 5 5-5 5" /></svg>
               </a>
-              <a class="text-link" href="#features">Take a closer look <span aria-hidden="true">↓</span></a>
+              <a class="button button-ghost" href="#features">Take a closer look <span aria-hidden="true">↓</span></a>
             </div>
             <div class="seed-console" aria-label="Example 16-character track seed">
               <div class="seed-console-top">
@@ -83,14 +91,18 @@
             </div>
           </div>
           <figure class="hero-visual">
-            <img
-              src="./screenshots/race.webp"
-              alt="Seedline race in progress on a winding coastal circuit, with the lap timer, track map, and boost gauge visible."
-              fetchpriority="high"
-            />
+            <div class="hero-visual-frame">
+              <img
+                src="./screenshots/race.webp"
+                alt="A Seedline time trial on a neon city circuit, with the lap timer, route minimap and boost gauge on the HUD."
+                fetchpriority="high"
+                width="1760"
+                height="990"
+              />
+            </div>
             <figcaption class="screen-caption">
               <span><span class="caption-dot"></span> IN THE DRIVER'S SEAT</span>
-              <span>01 / 09 WORLDS</span>
+              <span>NEON · LAP 1 / 3</span>
             </figcaption>
             <div class="hero-stamp" aria-hidden="true">
               <span>120</span><small>HZ PHYSICS</small>
@@ -107,34 +119,9 @@
       <section class="metrics" aria-label="Game highlights">
         <div class="page-width metrics-grid">
           <div class="metric"><strong>∞</strong><span>track combinations</span></div>
-          <div class="metric"><strong>09</strong><span>distinct worlds</span></div>
+          <div class="metric"><strong>16</strong><span>distinct worlds</span></div>
           <div class="metric"><strong>120<span class="metric-unit">HZ</span></strong><span>fixed-step physics</span></div>
-          <div class="metric"><strong>01</strong><span>more run, always</span></div>
-        </div>
-      </section>
-
-      <section class="section worlds-section" id="worlds">
-        <div class="page-width worlds-layout">
-          <div>
-            <p class="eyebrow eyebrow-dark">A world in every code</p>
-            <h2>No two seeds<br />take the same road.</h2>
-          </div>
-          <p class="section-intro">
-            Every track is generated from its seed, down to the bends, checkpoints, scenery and
-            boost pads. Share a code, meet on the same circuit, and see who knows it best.
-          </p>
-        </div>
-        <div class="world-strip" aria-label="Nine distinct environments">
-          <div class="world-track">
-            <span>Canyon <i>✳</i></span><span>Alpine <i>✳</i></span><span>Neon <i>✳</i></span>
-            <span>Grove <i>✳</i></span><span>Island <i>✳</i></span><span>Country <i>✳</i></span>
-            <span>Volcano <i>✳</i></span><span>Greece <i>✳</i></span><span>Old Town <i>✳</i></span>
-            <span aria-hidden="true">Canyon <i>✳</i></span><span aria-hidden="true">Alpine <i>✳</i></span>
-            <span aria-hidden="true">Neon <i>✳</i></span><span aria-hidden="true">Grove <i>✳</i></span>
-            <span aria-hidden="true">Island <i>✳</i></span><span aria-hidden="true">Country <i>✳</i></span>
-            <span aria-hidden="true">Volcano <i>✳</i></span><span aria-hidden="true">Greece <i>✳</i></span>
-            <span aria-hidden="true">Old Town <i>✳</i></span>
-          </div>
+          <div class="metric"><strong>10</strong><span>rival ghosts per seed</span></div>
         </div>
       </section>
 
@@ -146,68 +133,151 @@
               <h2>Easy to start.<br /><span>Hard to leave.</span></h2>
             </div>
             <p class="section-intro">
-              A quick run turns into a personal best. A personal best turns into a rivalry. The
-              circuit is only the beginning.
+              A quick run becomes a personal best. A personal best becomes a rivalry. The circuit is
+              only the beginning.
             </p>
           </div>
 
           <div class="feature-grid">
-            <article class="feature-card feature-card-track">
+            <article class="feature-card">
               <div class="feature-image">
                 <img
                   src="./screenshots/menu.webp"
-                  alt="Seedline track selection menu displaying a generated track, seed code, minimap and race controls."
+                  alt="Seedline play screen showing a generated track, its seed code, minimap and the race button."
                   loading="lazy"
                 />
                 <span class="image-tag">01 — THE SEED</span>
               </div>
               <div class="feature-copy">
                 <span class="feature-index">01 / TRACK GENERATION</span>
-                <h3>Your next favorite track<br />is a code away.</h3>
+                <h3>Your next favorite track is a code away.</h3>
                 <p>
-                  Spin up a fresh 16-character seed or share one with a friend. The same code always
-                  builds the same route, ready for a fair head-to-head.
+                  Roll a fresh 16-character seed or paste one from a friend. The same code always
+                  rebuilds the same route — bends, checkpoints, scenery and boost pads — for a fair
+                  head-to-head.
                 </p>
               </div>
             </article>
 
-            <article class="feature-card feature-card-garage">
+            <article class="feature-card">
               <div class="feature-image">
                 <img
                   src="./screenshots/garage.webp"
-                  alt="A vivid pink Seedline car in the garage, beside paint and booster-color choices."
+                  alt="A Seedline car in the garage beside paint, finish and booster-color choices."
                   loading="lazy"
                 />
                 <span class="image-tag">02 — YOUR GARAGE</span>
               </div>
               <div class="feature-copy">
                 <span class="feature-index">02 / MAKE IT YOURS</span>
-                <h3>Make your mark<br />before the start.</h3>
+                <h3>Make your mark before the start.</h3>
                 <p>
-                  Tune the paint and booster color, save the tracks you love, and keep your best
-                  times close. Your garage is your grid.
+                  Tune the paint, finish and booster color, save the tracks you love, and keep your
+                  best times close. Your garage is your grid.
                 </p>
               </div>
             </article>
 
-            <article class="feature-card feature-card-race">
+            <article class="feature-card">
               <div class="feature-image">
                 <img
-                  src="./screenshots/race.webp"
-                  alt="Top-down race view with a car on a curving road and its live lap timer, minimap and boost gauge."
+                  src="./screenshots/tracks.webp"
+                  alt="Seedline tracks screen with saved and recently played circuits shown as minimaps with their seeds."
                   loading="lazy"
                 />
-                <span class="image-tag">03 — FIND YOUR LINE</span>
+                <span class="image-tag">03 — YOUR TRACKS</span>
               </div>
               <div class="feature-copy">
-                <span class="feature-index">03 / THE DRIVE</span>
-                <h3>Built around the<br />next tenth.</h3>
+                <span class="feature-index">03 / SAVED &amp; RECENT</span>
+                <h3>Keep every circuit worth a rematch.</h3>
                 <p>
-                  Precise 120 Hz handling, drift, boost and trackside pickups make every corner a
-                  choice—and every clean run worth chasing.
+                  Save standout seeds and revisit the ones you just raced. Each tile carries its
+                  minimap, seed and personal best, ready to run back in a tap.
                 </p>
               </div>
             </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section worlds-section" id="worlds">
+        <div class="page-width worlds-layout">
+          <div>
+            <p class="eyebrow eyebrow-dark">A world in every code</p>
+            <h2>No two seeds<br />take the same road.</h2>
+          </div>
+          <p class="section-intro">
+            Sixteen hand-tuned worlds — from neon cities and vaporwave deserts to a TRON-like
+            lightgrid — each with their own terrain, weather, light and scenery.
+          </p>
+        </div>
+
+        <div class="page-width">
+          <div class="env-grid" aria-label="The sixteen Seedline worlds">
+            <figure class="env-tile" style="--accent:#ff9a3c">
+              <img src="./screenshots/env/canyon.webp" alt="Canyon — a red-rock desert circuit" loading="lazy" />
+              <figcaption><span class="env-name">Canyon</span><span class="env-tag">Red-rock desert</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#7fd6ff">
+              <img src="./screenshots/env/alpine.webp" alt="Alpine — a snowbound mountain circuit" loading="lazy" />
+              <figcaption><span class="env-name">Alpine</span><span class="env-tag">Snowbound peaks</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#ff4bd8">
+              <img src="./screenshots/env/neon.webp" alt="Neon — a synthwave city circuit" loading="lazy" />
+              <figcaption><span class="env-name">Neon</span><span class="env-tag">Synthwave city</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#c6e35a">
+              <img src="./screenshots/env/grove.webp" alt="Grove — a rainy woodland circuit" loading="lazy" />
+              <figcaption><span class="env-name">Grove</span><span class="env-tag">Rainy woodland</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#2ee6c8">
+              <img src="./screenshots/env/island.webp" alt="Island — a tropical coastal circuit" loading="lazy" />
+              <figcaption><span class="env-name">Island</span><span class="env-tag">Tropical coast</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#ffcf3a">
+              <img src="./screenshots/env/country.webp" alt="Countryside — an open farmland circuit" loading="lazy" />
+              <figcaption><span class="env-name">Countryside</span><span class="env-tag">Open farmland</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#ff6a1f">
+              <img src="./screenshots/env/volcano.webp" alt="Volcano — a lava-field circuit" loading="lazy" />
+              <figcaption><span class="env-name">Volcano</span><span class="env-tag">Lava fields</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#5b8dff">
+              <img src="./screenshots/env/greece.webp" alt="Ancient Greece — a marble coastal circuit" loading="lazy" />
+              <figcaption><span class="env-name">Ancient Greece</span><span class="env-tag">Marble coast</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#ff7a59">
+              <img src="./screenshots/env/town.webp" alt="Old Town — a cobbled-street circuit" loading="lazy" />
+              <figcaption><span class="env-name">Old Town</span><span class="env-tag">Cobbled streets</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#76d6a0">
+              <img src="./screenshots/env/wetlands.webp" alt="Wetlands — a misty bayou circuit" loading="lazy" />
+              <figcaption><span class="env-name">Wetlands</span><span class="env-tag">Misty bayou</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#66c8df">
+              <img src="./screenshots/env/harbor.webp" alt="Harbor — a working-docks circuit" loading="lazy" />
+              <figcaption><span class="env-name">Harbor</span><span class="env-tag">Working docks</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#e8d8a2">
+              <img src="./screenshots/env/saltflats.webp" alt="Salt Flats — a mirror-pan desert circuit" loading="lazy" />
+              <figcaption><span class="env-name">Salt Flats</span><span class="env-tag">Mirror pan</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#ff4bd8">
+              <img src="./screenshots/env/nocturne.webp" alt="Nocturne Bloom — a bioluminescent jungle circuit" loading="lazy" />
+              <figcaption><span class="env-name">Nocturne Bloom</span><span class="env-tag">Bioluminescent jungle</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#ff7ab8">
+              <img src="./screenshots/env/duskmesa.webp" alt="Dusk Mesa — a vaporwave desert circuit" loading="lazy" />
+              <figcaption><span class="env-name">Dusk Mesa</span><span class="env-tag">Vaporwave desert</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#a9c7ff">
+              <img src="./screenshots/env/skyway.webp" alt="Skyway — a floating cloud-city circuit" loading="lazy" />
+              <figcaption><span class="env-name">Skyway</span><span class="env-tag">Floating cloud city</span></figcaption>
+            </figure>
+            <figure class="env-tile" style="--accent:#22e5ff">
+              <img src="./screenshots/env/grid.webp" alt="Grid — a glowing lightgrid void circuit" loading="lazy" />
+              <figcaption><span class="env-name">Grid</span><span class="env-tag">Lightgrid void</span></figcaption>
+            </figure>
           </div>
         </div>
       </section>
@@ -218,19 +288,20 @@
             <p class="eyebrow"><span class="eyebrow-line"></span> THE CHASE IS PERSONAL</p>
             <h2>Every lap<br />leaves a <span>ghost.</span></h2>
             <p>
-              Race your recorded best, follow the boost you used, then take on the fastest ghosts
-              from other drivers on that same seed. Your next rival might be you, one corner ago.
+              Race your recorded best — played back through the real physics and boost logic — then
+              take on the fastest ghosts from other drivers on that same seed. Your next rival might
+              be you, one corner ago.
             </p>
             <div class="race-points">
               <div><span>01</span><b>Recorded best-run replays</b></div>
-              <div><span>02</span><b>Track-specific online times</b></div>
+              <div><span>02</span><b>Track &amp; event leaderboards</b></div>
               <div><span>03</span><b>Up to ten rival ghosts</b></div>
             </div>
           </div>
           <div class="race-note-image">
             <img
-              src="./screenshots/race.webp"
-              alt="A live Seedline time trial, showing the current lap and checkpoint, route minimap, and boost meter."
+              src="./screenshots/env/grid.webp"
+              alt="A live Seedline time trial on the Grid world, showing lap, checkpoint, minimap and boost meter."
               loading="lazy"
             />
             <div class="race-image-label"><span class="live-indicator"></span> EVERY TENTH COUNTS</div>
@@ -263,7 +334,7 @@
               <div class="platform-icon platform-icon-apple" aria-hidden="true">
                 <svg viewBox="0 0 32 32"><path d="M21.1 16.7c0-3 2.5-4.4 2.6-4.5a5.7 5.7 0 0 0-4.5-2.4c-1.9-.2-3.6 1.1-4.6 1.1s-2.4-1.1-4-1.1a6 6 0 0 0-5.1 3.1c-2.2 3.7-.6 9.1 1.6 12.1 1.1 1.5 2.3 3.1 3.9 3 1.5-.1 2.1-1 4-1s2.5 1 4 1 2.7-1.5 3.7-3.1a13.3 13.3 0 0 0 1.7-3.5 5.3 5.3 0 0 1-3.3-4.7ZM18 7.8a5.2 5.2 0 0 0 1.2-3.8 5.3 5.3 0 0 0-3.5 1.8 4.9 4.9 0 0 0-1.2 3.7A4.4 4.4 0 0 0 18 7.8Z" /></svg>
               </div>
-              <div class="platform-content"><h3>macOS</h3><p>Desktop</p></div>
+              <div class="platform-content"><h3>macOS</h3><p>Universal · desktop</p></div>
               <span class="platform-status">COMING SOON</span>
               <button type="button" disabled>Build not published</button>
             </article>
@@ -302,7 +373,8 @@
           </div>
           <p class="download-note">
             <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5" /><path d="M10 9v4m0-6h.01" /></svg>
-            We’ll publish direct, verified downloads here when release builds are ready.
+            We’ll publish direct, verified downloads here when release builds are ready. In the
+            meantime, the project is open source — build it yourself with Godot 4.7.
           </p>
         </div>
       </section>
@@ -312,42 +384,42 @@
           <div class="faq-intro">
             <p class="eyebrow"><span class="eyebrow-line"></span> QUICK FAQ</p>
             <h2>Good to<br />know.</h2>
-            <p>Got a question we missed? The game is still taking shape—check back as new builds arrive.</p>
+            <p>Got a question we missed? The game is still taking shape — check back as new builds arrive.</p>
           </div>
           <div class="faq-list">
             <details>
               <summary>How do track seeds work?<span aria-hidden="true"></span></summary>
               <p>
-                A seed is a 16-character code used to generate a track. The same code recreates the
-                same layout, scenery and pickups, so you can share a circuit and compare runs.
+                A seed is a 16-character code used to generate a track. The same code always recreates
+                the same layout, scenery and pickups, so you can share a circuit and compare runs fairly.
               </p>
             </details>
             <details>
               <summary>Can I play offline?<span aria-hidden="true"></span></summary>
               <p>
-                Yes. Racing, saved tracks and personal bests work offline. Online leaderboards and
-                rival ghosts need a connection; finished runs can queue for upload when you’re back online.
+                Yes. Racing, saved tracks and personal bests all work offline. Online leaderboards and
+                rival ghosts need a connection; finished runs queue for upload when you’re back online.
               </p>
             </details>
             <details>
               <summary>What are the controls?<span aria-hidden="true"></span></summary>
               <p>
-                Keyboard, gamepad and touch controls are supported. Keyboard and gamepad bindings
-                can be changed in Options, and mobile controls are designed for thumbs.
+                Keyboard, gamepad and touch are all supported. Keyboard and gamepad bindings can be
+                changed in Options, and mobile controls are designed for thumbs.
               </p>
             </details>
             <details>
-              <summary>What’s available to download right now?<span aria-hidden="true"></span></summary>
+              <summary>Is it open source?<span aria-hidden="true"></span></summary>
               <p>
-                No public release builds have been posted yet. The platform cards above will link to
-                official downloads as soon as they’re published—there are no unofficial mirrors here.
+                Yes. Seedline is built in GDScript on Godot 4.7 with a Nakama backend for online
+                services. You can clone the repository and run it locally today.
               </p>
             </details>
             <details>
               <summary>What does “rival ghost” mean?<span aria-hidden="true"></span></summary>
               <p>
-                A ghost is a translucent recording of a best run. Follow your own replay or share
-                the same seeded track with up to ten of the fastest recorded opponents.
+                A ghost is a translucent recording of a best run. Follow your own replay or line up
+                against the fastest recorded opponents on the same seeded track — up to ten at once.
               </p>
             </details>
           </div>
