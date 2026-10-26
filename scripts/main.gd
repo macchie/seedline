@@ -450,6 +450,9 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		if state == "race" or state == "countdown":
 			toggle_pause()
+	# persist any coalesced saves before the app goes away (also flush when backgrounded on mobile)
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		Store.flush()
 
 
 func sens_frac() -> float:
