@@ -9,7 +9,7 @@ const N_WARN_AHEAD := 12
 const GHOST_FLEET_SCRIPT = preload("res://scripts/world/rival_ghost_fleet.gd")
 
 # --- persistent options (same keys and defaults as localStorage in the web build)
-var opts := {"gfx": "high", "sound": true, "side": "left", "sensV": 75, "stats": "", "zoom": 50}
+var opts := {"gfx": "high", "sound": true, "side": "left", "sensV": 75, "stats": "", "zoom": 50, "msaa": "off", "quality": "high"}
 var car_cfg := {"color": "#e8402c", "finish": "gloss", "boost_color": "#38e8ff", "model": "formula"}
 var favs: Array = []
 var recent_tracks: Array = []
@@ -267,7 +267,53 @@ func apply_gfx() -> void:
 	sun.shadow_enabled = hi
 	ink.visible = hi
 	grade_mat.set_shader_parameter("full", hi)
+	_apply_aa()
+	_apply_quality_runtime()
 	_apply_resolution()
+
+
+# Anti-aliasing: hardware MSAA (the big edge-quality win on this stylised, high-contrast look) or the
+# cheaper post FXAA. Defaults off so existing devices are unchanged until the player opts in.
+func _apply_aa() -> void:
+	var vp := get_viewport()
+	match str(opts.get("msaa", "off")):
+		"2x":
+			vp.msaa_3d = Viewport.MSAA_2X
+			vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+		"4x":
+			vp.msaa_3d = Viewport.MSAA_4X
+			vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+		"fxaa":
+			vp.msaa_3d = Viewport.MSAA_DISABLED
+			vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
+		_:
+			vp.msaa_3d = Viewport.MSAA_DISABLED
+			vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+
+
+# Detail tier — the immediately-applicable half (shadow resolution + draw distance). "high" matches the
+# previous fixed values, so it is a pure scale-down for weaker devices. Prop/weather density is the
+# other half and is baked into the world at build time (see build_world / _q_prop_density).
+func _apply_quality_runtime() -> void:
+	var q := str(opts.get("quality", "high"))
+	var base_shadow := 1024 if is_touch else 2048
+	var shadow_size: int = {"low": base_shadow / 2, "med": base_shadow * 3 / 4, "high": base_shadow}.get(q, base_shadow)
+	RenderingServer.directional_shadow_atlas_set_size(shadow_size, true)
+	sun.directional_shadow_max_distance = {"low": 360.0, "med": 440.0, "high": 520.0}.get(q, 520.0)
+	if cam:
+		cam.far = {"low": 1000.0, "med": 1200.0, "high": 1400.0}.get(q, 1400.0)
+
+
+func _q() -> String:
+	return str(opts.get("quality", "high"))
+
+
+func _q_prop_density() -> float:
+	return {"low": 0.4, "med": 0.7, "high": 1.0}.get(_q(), 1.0)
+
+
+func _q_weather_density() -> float:
+	return {"low": 0.4, "med": 0.7, "high": 1.0}.get(_q(), 1.0)
 
 
 # ================================================================== tracks
@@ -322,6 +368,8 @@ func build_world() -> void:
 	world = World.new()
 	add_child(world)
 	var e := env
+	world.prop_density = _q_prop_density()
+	world.weather_density = _q_weather_density()
 	world.build(track, e, is_touch)
 	environment.background_color = U.hexc(e.fog)
 	var dark: bool = e.get("dark", false)
@@ -821,7 +869,7 @@ func restart(quick: bool) -> void:
 	run_start_turbo = 0
 	snapshot = null
 	finish_t = 0.0
-	best = Store.get_value("best5." + track.seed, null)
+	best = _load_best(track.seed)
 	ghost_v.visible = false
 	fx.clear_skids()
 	for g in world.gates:
@@ -907,6 +955,33 @@ func to_menu() -> void:
 	ui.refresh_menu()
 
 
+# Best-run metadata (time + splits) lives in the shared store; the heavy ghost/input replay lives in
+# its own binary file. Returns the merged dict (or null) so gameplay has the full record in memory.
+func _load_best(seed: String):
+	var meta = Store.get_value("best5." + seed, null)
+	if not (meta is Dictionary):
+		return meta
+	var replay := Replays.load(seed)
+	if not replay.is_empty():
+		for k in replay:
+			meta[k] = replay[k]
+	elif meta.has("ghost") or meta.has("inputs"):
+		# legacy inline entry: migrate the heavy data into its own file and slim the store record
+		_save_best(seed, meta)
+	return meta
+
+
+func _save_best(seed: String, b: Dictionary) -> void:
+	Store.set_value("best5." + seed, {"t": b.get("t"), "splits": b.get("splits", [])})
+	Replays.save(seed, {
+		"ghost": b.get("ghost", []),
+		"inputs": b.get("inputs", []),
+		"start_boost_t": b.get("start_boost_t", 0.0),
+		"start_boost_amt": b.get("start_boost_amt", CarSim.BOOST_START),
+		"start_turbo": b.get("start_turbo", 0),
+	})
+
+
 func finish_race(t: float) -> void:
 	state = "finished"
 	finish_t = t
@@ -918,11 +993,9 @@ func finish_race(t: float) -> void:
 	var prev_best = best.t if best != null else null
 	var is_pb: bool = prev_best == null or t < prev_best
 	if is_pb:
-		best = {"t": t, "splits": splits.duplicate(), "ghost": ghost_rec.duplicate(), "inputs": run_inputs.duplicate()}
-		best.start_boost_t = run_start_boost_t
-		best.start_boost_amt = run_start_boost_amt
-		best.start_turbo = run_start_turbo
-		Store.set_value("best5." + track.seed, best)
+		best = {"t": t, "splits": splits.duplicate(), "ghost": ghost_rec.duplicate(), "inputs": run_inputs.duplicate(),
+			"start_boost_t": run_start_boost_t, "start_boost_amt": run_start_boost_amt, "start_turbo": run_start_turbo}
+		_save_best(track.seed, best)
 		for f in favs:
 			if f.seed == track.seed:
 				f.best = t
@@ -1113,7 +1186,7 @@ func _start_track_replay(seed: String, env_key: String) -> void:
 	auto_next_t = -1.0
 	load_track(seed, env_key)
 	_record_recent_track()
-	best = Store.get_value("best5." + track.seed, null)
+	best = _load_best(track.seed)
 	var recording = best.get("ghost") if best is Dictionary else null
 	var inputs = best.get("inputs", []) if best is Dictionary else []
 	var has_recorded_inputs: bool = inputs is Array and not inputs.is_empty()
@@ -1218,8 +1291,12 @@ func set_opt(k: String, v) -> void:
 	opts[k] = v
 	Store.set_value("opts", opts)
 	ui.sync_opts()
-	if k == "gfx":
+	if k == "gfx" or k == "msaa" or k == "quality":
 		apply_gfx()
+	# prop/weather density is baked at build time; rebuild to show it now, but only from the menu so an
+	# in-progress race (pause → options) is never disturbed — it picks up the new density on next load
+	if k == "quality" and track != null and state == "menu":
+		build_world()
 
 
 func set_sens(v: int) -> void:

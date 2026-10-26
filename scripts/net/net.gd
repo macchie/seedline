@@ -20,6 +20,7 @@ signal _auth_finished
 const QUEUE_KEY := "net_queue"
 const QUEUE_MAX := 50
 const TIMEOUT_S := 8.0
+const HTTP_POOL_MAX := 6
 const HEARTBEAT_S := 60.0
 const ROOM := "seedline"
 const SEED_RE := "^[A-Z0-9][A-Z0-9_-]*$"
@@ -62,6 +63,8 @@ var _events_serial := 0
 var _car_timer: Timer
 var _car_serial := 0
 var _car_busy := false
+var _http_pool: Array[HTTPRequest] = []
+var _queue: Array = []  # offline run backlog; in-memory source of truth, mirrored into Store
 
 
 func _ready() -> void:
@@ -75,6 +78,7 @@ func _ready() -> void:
 	_token = str(Store.get_value("net_token", ""))
 	_refresh = str(Store.get_value("net_refresh", ""))
 	email = str(Store.get_value("net_email", ""))
+	_queue = Store.get_value(QUEUE_KEY, [])
 	_car_timer = Timer.new()
 	_car_timer.one_shot = true
 	_car_timer.wait_time = CAR_PUSH_DELAY_S
@@ -298,27 +302,29 @@ func submit_run(seed: String, env: String, time_s: float, length_m: float, split
 	}
 	if ghost.size() >= 6 and ghost.size() % 3 == 0:
 		entry.ghost = ghost.duplicate()
-	var q: Array = Store.get_value(QUEUE_KEY, [])
-	q.append(entry)
-	while q.size() > QUEUE_MAX:
-		q.pop_front()
-	Store.set_value(QUEUE_KEY, q)
+	_queue.append(entry)
+	while _queue.size() > QUEUE_MAX:
+		_queue.pop_front()
+	_save_queue()
 	flush_queue()
+
+
+func _save_queue() -> void:
+	Store.set_value(QUEUE_KEY, _queue)
 
 
 func flush_queue() -> void:
 	if not enabled or _flushing or Time.get_ticks_msec() < _flush_retry_at:
 		return
 	_flushing = true
-	while true:
-		var q: Array = Store.get_value(QUEUE_KEY, [])
-		if q.is_empty():
-			break
-		var entry: Dictionary = q[0]
+	while not _queue.is_empty():
+		# erase by identity (not pop_front): a new run may be queued during the await, and the backlog
+		# cap could trim the front out from under us — removing this exact entry stays correct either way
+		var entry: Dictionary = _queue[0]
 		var r: Dictionary = await call_rpc("seedline_submit_run", entry)
 		if r.ok:
-			q.pop_front()
-			Store.set_value(QUEUE_KEY, q)
+			_queue.erase(entry)
+			_save_queue()
 			if r.data is Dictionary and r.data.get("pp") is Dictionary:
 				_apply_pp(str(entry.get("seed", "")), r.data.pp)
 			if r.data is Dictionary and r.data.get("progression") is Dictionary:
@@ -332,8 +338,8 @@ func flush_queue() -> void:
 			continue
 		if r.permanent:
 			push_warning("Seedline: run rejected by the server (%s)" % r.message)
-			q.pop_front()
-			Store.set_value(QUEUE_KEY, q)
+			_queue.erase(entry)
+			_save_queue()
 			continue
 		# transient failure: keep the queue and try again later
 		_flush_retry_at = Time.get_ticks_msec() + (60000 if r.code == 429 else 15000)
@@ -554,12 +560,31 @@ func _rpc_once(id: String, payload: Dictionary) -> Dictionary:
 	return r
 
 
+# Reusable HTTPRequest nodes: each one handles a single request at a time, so overlapping calls each
+# take their own from the free-list (or make a fresh one), and hand it back when done instead of
+# churning a Node per request.
+func _acquire_http() -> HTTPRequest:
+	var req: HTTPRequest = _http_pool.pop_back() if not _http_pool.is_empty() else null
+	if req == null:
+		req = HTTPRequest.new()
+		add_child(req)
+	req.timeout = TIMEOUT_S
+	return req
+
+
+func _release_http(req: HTTPRequest) -> void:
+	if not is_instance_valid(req):
+		return
+	if _http_pool.size() < HTTP_POOL_MAX:
+		_http_pool.append(req)
+	else:
+		req.queue_free()
+
+
 func _api(method: String, path: String, body, authed: bool) -> Dictionary:
 	if authed and _token == "":
 		return _result(false, 401, "no session", false)
-	var req := HTTPRequest.new()
-	req.timeout = TIMEOUT_S
-	add_child(req)
+	var req := _acquire_http()
 	var headers := PackedStringArray(["Content-Type: application/json", "Accept: application/json"])
 	if authed:
 		headers.append("Authorization: Bearer " + _token)
@@ -570,10 +595,10 @@ func _api(method: String, path: String, body, authed: bool) -> Dictionary:
 	var m: int = {"GET": HTTPClient.METHOD_GET, "POST": HTTPClient.METHOD_POST, "PUT": HTTPClient.METHOD_PUT}[method]
 	var err := req.request(url, headers, m, text)
 	if err != OK:
-		req.queue_free()
+		_release_http(req)
 		return _result(false, 0, "request error %d" % err, false)
 	var res: Array = await req.request_completed
-	req.queue_free()
+	_release_http(req)
 	if res[0] != HTTPRequest.RESULT_SUCCESS:
 		return _result(false, 0, "network error %d" % res[0], false)
 	var code: int = res[1]

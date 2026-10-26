@@ -14,6 +14,8 @@ var e: Dictionary
 var rng: SeedRng
 var noise: ValueNoise
 var is_touch := false
+var prop_density := 1.0     # quality tier: scales scattered scenery counts (set before build())
+var weather_density := 1.0  # quality tier: scales weather particle count (set before build())
 
 var grid := {}          # cell key -> PackedInt32Array of sample indices
 var obs := {}           # cell key -> Array of Vector3(x, z, r)
@@ -487,6 +489,7 @@ func emit(x: float, y: float, z: float, rate: float, size: float, color: int, li
 
 
 func place_around(count: int, min_d: float, max_d: float, far_frac: float = 0.28) -> Array:
+	count = maxi(0, int(round(count * prop_density)))
 	var out: Array = []
 	var tries := count * 8
 	var shore: bool = e.get("shore", false)
@@ -1362,7 +1365,7 @@ func _build_weather() -> void:
 		return
 	var k: Dictionary = WEATHER[e.weather]
 	var lines: bool = k.get("lines", false)
-	var n := int(k.n * (0.6 if is_touch else 1.0))
+	var n := maxi(1, int(k.n * (0.6 if is_touch else 1.0) * weather_density))
 	# VERTEX carries each particle's random seed (xyz), UV2.x its fourth seed value and UV the corner / line end
 	var pos := PackedVector3Array()
 	var uv := PackedVector2Array()

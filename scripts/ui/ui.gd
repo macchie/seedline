@@ -1252,7 +1252,27 @@ func _update_event_track(c: Dictionary) -> void:
 	var acc := U.css(Envs.DATA[env_s].accent)
 	# wash the card in a hint of the environment's accent, matching the saved-track tiles
 	c.card.style(Color(acc.r, acc.g, acc.b, 0.08), Color(acc.r, acc.g, acc.b, 0.22), 14.0)
-	var td := TrackGen.generate(str(parsed.seed) if parsed != null else seed_s, env_s)
+	var gen_seed := str(parsed.seed) if parsed != null else seed_s
+	_generate_event_track(c, seed_s, gen_seed, env_s, acc)
+
+
+## Build the featured minimap + name + stats off the main thread (shared with the track-grid cache)
+## so an events refresh never stalls the frame on generation. Stale results are dropped if the card's
+## seed changed again while we were working.
+func _generate_event_track(c: Dictionary, seed_s: String, gen_seed: String, env_s: String, acc: Color) -> void:
+	var key := env_s + "|" + seed_s
+	var td := _cache_lookup(key, seed_s, env_s)
+	if td == null:
+		var result := {}
+		var task_id := WorkerThreadPool.add_task(func(): result["td"] = TrackGen.generate(gen_seed, env_s), false, "seedline event preview")
+		while not WorkerThreadPool.is_task_completed(task_id):
+			await get_tree().process_frame
+		WorkerThreadPool.wait_for_task_completion(task_id)
+		td = result.get("td")
+		if td != null:
+			_cache_put(key, td)
+	if td == null or c.gen_seed != seed_s:
+		return
 	c.map.set_track(td, acc)
 	c.name_lbl.text = td.name.to_upper()
 	c.env_lbl.text = (str(Envs.DATA[env_s].name) + " · " + ("%.2f" % (td.length / 1000.0)) + " km · " + str(U.LAPS) + " laps · " + str(td.cps.size()) + " CP").to_upper()
@@ -1512,6 +1532,9 @@ func _best_time(seed_s: String):
 
 
 func _has_replay(seed_s: String) -> bool:
+	if Replays.has(seed_s):
+		return true
+	# legacy inline entries still carry the replay in the store until the track is next loaded
 	var b = Store.get_value("best5." + seed_s, null)
 	if not (b is Dictionary):
 		return false
@@ -1706,6 +1729,8 @@ func _build_options_pane(parent: Control) -> void:
 
 	# ---------- Visuals ----------
 	for spec in [["gfx", "Graphics", [["high", "Toon shading"], ["low", "Battery saver"]]],
+			["quality", "Detail", [["low", "Low"], ["med", "Medium"], ["high", "High"]]],
+			["msaa", "Anti-aliasing", [["off", "Off"], ["fxaa", "FXAA"], ["2x", "2×"], ["4x", "4×"]]],
 			["stats", "Frame rate readout", [["", "Hidden"], ["1", "Shown"]]]]:
 		var col := group.call(opt_visuals_box, spec[1]) as VBoxContainer
 		var k: String = spec[0]
@@ -4399,6 +4424,10 @@ func _fmt_pp(v: float) -> String:
 
 
 func render_favs() -> void:
+	# the saved-track tiles only live inside the Tracks dialog; while it's closed, skip the rebuild
+	# (show_section rebuilds from current state on open) so boot and every refresh_menu don't pay for it
+	if _section_key != "tracks":
+		return
 	fav_preview_revision += 1
 	for c in fav_list.get_children():
 		c.queue_free()
@@ -4415,7 +4444,7 @@ func render_favs() -> void:
 
 
 func render_recent_tracks() -> void:
-	if not recent_track_list:
+	if not recent_track_list or _section_key != "tracks":
 		return
 	fav_preview_revision += 1
 	recent_preview_views.clear()

@@ -34,8 +34,8 @@ gdscript/warnings/narrowing_conversion=0
 
 [display]
 
-window/size/viewport_width=1280
-window/size/viewport_height=720
+window/size/viewport_width=1650
+window/size/viewport_height=960
 window/handheld/orientation=6
 
 [rendering]

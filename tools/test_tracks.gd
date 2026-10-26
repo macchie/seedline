@@ -15,7 +15,7 @@ func _init() -> void:
 				s += float(a[i]) * (i % 7 + 1)
 			return s
 		out[sd] = {"env": env, "ms": ms, "N": tr.n, "fam": tr.family, "name": tr.name, "len": tr.length, "minR": tr.min_radius, "cx": tr.complexity,
-			"cps": Array(tr.cps), "medals": tr.medals, "px0": tr.px[0], "pz0": tr.pz[0], "pxs": ck.call(tr.px), "pzs": ck.call(tr.pz), "pys": ck.call(tr.py), "ks": ck.call(tr.k),
+			"cps": Array(tr.cps), "px0": tr.px[0], "pz0": tr.pz[0], "pxs": ck.call(tr.px), "pzs": ck.call(tr.pz), "pys": ck.call(tr.py), "ks": ck.call(tr.k),
 			"bridges": tr.bridges, "river": null if tr.river == null else {"w": tr.river.w, "n": tr.river.x.size(), "x0": tr.river.x[0]}}
 	print(JSON.stringify(out))
 	quit()
