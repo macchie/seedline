@@ -9,7 +9,7 @@ const N_WARN_AHEAD := 12
 const GHOST_FLEET_SCRIPT = preload("res://scripts/world/rival_ghost_fleet.gd")
 
 # --- persistent options (same keys and defaults as localStorage in the web build)
-var opts := {"gfx": "high", "sound": true, "side": "left", "sensV": 75, "stats": ""}
+var opts := {"gfx": "high", "sound": true, "side": "left", "sensV": 75, "stats": "", "zoom": 50}
 var car_cfg := {"color": "#e8402c", "finish": "gloss", "boost_color": "#38e8ff", "model": "formula"}
 var favs: Array = []
 var recent_tracks: Array = []
@@ -1225,6 +1225,13 @@ func set_sens(v: int) -> void:
 	ui.sync_opts()
 
 
+# 0..100, 50 = the default chase distance; lower pulls the view wider, higher moves it closer.
+func set_zoom(v: int) -> void:
+	opts.zoom = v
+	Store.set_value("opts", opts)
+	ui.sync_opts()
+
+
 func set_car_color(c: String) -> void:
 	car_cfg.color = c
 	save_car()
@@ -1677,7 +1684,10 @@ func _update_camera(dt: float, x: float, z: float, h: float, speed: float) -> vo
 	else:
 		# fixed-orientation tilted camera that leads the car in the direction it is travelling
 		var port := H > W
-		var ht := (150.0 if port else 116.0) + speed * 0.55
+		# user camera-zoom preference (50 = default); scaling height and dolly-back together keeps
+		# the chase angle fixed and just slides the view a little closer or wider.
+		var zoomf := U.lerpf2(1.15, 0.85, U.clampf2(float(opts.get("zoom", 50)), 0.0, 100.0) / 100.0)
+		var ht := ((150.0 if port else 116.0) + speed * 0.55) * zoomf
 		var back := ht * 0.78
 		var k2 := 0.95 if port else 1.05
 		var lx := x + U.clampf2(car.vx * k2 * (0.8 if port else 1.0), -58.0, 58.0)

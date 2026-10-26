@@ -218,6 +218,8 @@ var fav_preview_task_running := false
 const FAV_TRACK_CACHE_LIMIT := 64
 var sens_slider: HSlider
 var sens_out: Label
+var zoom_slider: HSlider
+var zoom_out: Label
 # options content lives in options_body; it is reparented into options_modal when opened in-game
 var options_body: VBoxContainer
 var options_modal: Control
@@ -1710,6 +1712,32 @@ func _build_options_pane(parent: Control) -> void:
 		var s := seg(spec[2], func(v): game.set_opt(k, v))
 		opt_segs[k] = s[1]
 		col.add_child(s[0])
+	# camera zoom: a small dolly in/out around the default chase distance
+	var zcol := group.call(opt_visuals_box, "Camera zoom") as VBoxContainer
+	var zrow := hbox(0)
+	var za := L("Zoom", "body", 500, 12, DIM)
+	za.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	za.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	zrow.add_child(za)
+	zoom_out = L("Default", "body", 600, 11, FG, false, 0.16, true)
+	zoom_out.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	zrow.add_child(zoom_out)
+	zcol.add_child(zrow)
+	zoom_slider = HSlider.new()
+	zoom_slider.min_value = 0
+	zoom_slider.max_value = 100
+	zoom_slider.step = 1
+	zoom_slider.custom_minimum_size = Vector2(0, 30)
+	zoom_slider.focus_mode = Control.FOCUS_ALL
+	_style_slider(zoom_slider)
+	zoom_slider.value_changed.connect(func(v): game.set_zoom(int(v)))
+	zcol.add_child(zoom_slider)
+	var zrl := hbox(0)
+	var zwl := L("Wider", "body", 600, 10, DIM, false, 0.12, true)
+	zwl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	zrl.add_child(zwl)
+	zrl.add_child(L("Closer", "body", 600, 10, DIM, false, 0.12, true))
+	zcol.add_child(zrl)
 
 	# ---------- Controls ----------
 	# touch steering sensitivity
@@ -3682,6 +3710,7 @@ func set_accent(a: Color, on: Color) -> void:
 	if tabs.size() > 0:
 		_sync_tab_styles()
 	_style_slider(sens_slider)
+	_style_slider(zoom_slider)
 	var f: StyleBoxFlat = seed_in.get_theme_stylebox("focus")
 	f.border_color = accent
 	for m in [pause_modal, finish_modal, acct_modal, seed_modal]:
@@ -4543,6 +4572,9 @@ func sync_opts() -> void:
 	var v := int(o.sensV)
 	sens_slider.set_value_no_signal(v)
 	sens_out.text = ("Gentle" if v < 34 else ("Normal" if v < 67 else "Quick")).to_upper()
+	var zv := int(o.get("zoom", 50))
+	zoom_slider.set_value_no_signal(zv)
+	zoom_out.text = "DEFAULT" if zv == 50 else ("%+d%%" % int(round((zv - 50) / 50.0 * 15.0)))
 	stats_lbl.visible = str(o.stats) != ""
 	sync_icons()
 	relayout()
