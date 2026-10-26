@@ -14,7 +14,6 @@ const FG := Color("#f1f3f6")
 const DIM := Color("#8e97a7")
 const FAST := Color("#4fb2ff")
 const SLOW := Color("#ff5a4f")
-const MEDAL_COL := {"author": Color("#3ddc84"), "gold": Color("#f5c542"), "silver": Color("#c9cfd8"), "bronze": Color("#cf8752")}
 const SWATCHES := ["#e8402c", "#ff8a1f", "#f2c230", "#2ec27e", "#1fb6c9", "#1f6ff1", "#7a4dff", "#f04fb3", "#eef1f5"]
 const FINISHES := [["gloss", "Gloss"], ["satin", "Satin"], ["matte", "Matte"], ["brushed", "Brushed"], ["metal", "Metallic"], ["pearl", "Pearl"], ["candy", "Candy"], ["chrome", "Chrome"]]
 const BOOST_SWATCHES := ["#38e8ff", "#3fb4ff", "#ff9a3c", "#d25bff", "#2ec27e", "#ff4f78", "#f2c230", "#8cff4f", "#eef1f5"]
@@ -35,8 +34,8 @@ const MEDAL_TIERS := {
 const DIVISION_NUMERALS := ["", "I", "II", "III", "IV"]
 
 # Achievement catalogue (client view): id → display + how to read progress out of the progression
-# payload. `stat` keys: runs, tracks, environments, event_count, medals_any/gold/author. A missing
-# stat means the badge has no measurable progress (binary unlock, e.g. event podium).
+# payload. `stat` keys: runs, tracks, environments, event_count. A missing stat means the badge has
+# no measurable progress (binary unlock, e.g. event podium).
 const ACHIEVEMENTS := [
 	{"id": "first_finish", "title": "First Finish", "icon": "play", "stat": "runs", "target": 1},
 	{"id": "century", "title": "Century", "icon": "play", "stat": "runs", "target": 100},
@@ -44,9 +43,6 @@ const ACHIEVEMENTS := [
 	{"id": "explorer_50", "title": "Pathfinder", "icon": "dice", "stat": "tracks", "target": 50},
 	{"id": "explorer_100", "title": "Cartographer", "icon": "dice", "stat": "tracks", "target": 100},
 	{"id": "environment_tour", "title": "Grand Tour", "icon": "star", "stat": "environments", "target": 12},
-	{"id": "medal_first", "title": "First Podium", "icon": "trophy", "stat": "medals_any", "target": 1},
-	{"id": "gold_10", "title": "Gold Rush", "icon": "trophy", "stat": "medals_gold", "target": 10},
-	{"id": "author_first", "title": "Author's Pace", "icon": "trophy", "stat": "medals_author", "target": 1},
 	{"id": "event_first", "title": "Challenge Debut", "icon": "star", "stat": "event_count", "target": 1},
 	{"id": "event_regular", "title": "Event Regular", "icon": "star", "stat": "event_count", "target": 10},
 	{"id": "event_podium", "title": "Event Podium", "icon": "trophy", "target": 1},
@@ -110,9 +106,8 @@ var section_title: Label
 var section_title_wanted := false
 var btn_rand: Tap
 var panes_box: VBoxContainer
-# track-card best time + medal (moved out of the bottom toolbar)
+# track-card best time (moved out of the bottom toolbar)
 var card_best_lbl: Label
-var card_best_dot: Dot
 # bottom toolbar (player card + online status only)
 var bottombar: Glass
 var bar_box: Control
@@ -319,8 +314,6 @@ var pause_track: Label
 var finish_modal: Control
 var f_track: Label
 var f_time: Label
-var f_medal_dot: Control
-var f_medal: Label
 var f_delta: Label
 var f_best: VBoxContainer
 var f_fav: Label
@@ -1001,10 +994,6 @@ func _build_track_pane(parent: Control) -> void:
 	best_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	best_chip.pad(12, 0, 12, 0)
 	var best_in := hbox(8)
-	card_best_dot = dot(MEDAL_COL["gold"], 9)
-	card_best_dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	card_best_dot.visible = false
-	best_in.add_child(card_best_dot)
 	var best_col := vbox(1)
 	best_col.alignment = BoxContainer.ALIGNMENT_CENTER
 	best_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1245,6 +1234,7 @@ func _update_event_track(c: Dictionary) -> void:
 		c.env_lbl.text = "—"
 		c.best_lbl.text = "NOT RACED YET"
 		c.best_lbl.add_theme_color_override("font_color", DIM)
+		c.card.style(PANEL2, LINE, 14.0)
 		c.gen_seed = ""
 		return
 	var bt = _best_time(seed_s)
@@ -1258,6 +1248,8 @@ func _update_event_track(c: Dictionary) -> void:
 	if not Envs.DATA.has(env_s):
 		env_s = "CANYON"
 	var acc := U.css(Envs.DATA[env_s].accent)
+	# wash the card in a hint of the environment's accent, matching the saved-track tiles
+	c.card.style(Color(acc.r, acc.g, acc.b, 0.08), Color(acc.r, acc.g, acc.b, 0.22), 14.0)
 	var td := TrackGen.generate(str(parsed.seed) if parsed != null else seed_s, env_s)
 	c.map.set_track(td, acc)
 	c.name_lbl.text = td.name.to_upper()
@@ -1441,9 +1433,12 @@ func _track_tile(seed_s: String, env_s: String, title: String, show_remove: bool
 		var parsed = game.parse_seed(seed_s)
 		if parsed != null:
 			env_s = str(parsed.env)
-	var acc := U.css(Envs.DATA[env_s].accent) if Envs.DATA.has(env_s) else accent
+	var ed: Dictionary = Envs.DATA.get(env_s, {})
+	var acc := U.css(ed.accent) if not ed.is_empty() else accent
 	var cur: bool = game.track != null and seed_s == game.track.seed and env_s == game.track.env_key
-	var cell := tap(PANEL2, accent if cur else LINE, 12.0)
+	# wash the card in a hint of the environment's accent so each world reads at a glance
+	var tint := Color(acc.r, acc.g, acc.b, 0.14 if cur else 0.08)
+	var cell := tap(tint, accent if cur else Color(acc.r, acc.g, acc.b, 0.22), 12.0)
 	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cell.pad(8, 8, 8, 8)
 	cell.tooltip_text = "Open " + title
@@ -1462,6 +1457,23 @@ func _track_tile(seed_s: String, env_s: String, title: String, show_remove: bool
 	name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_lbl.custom_minimum_size = Vector2(1, 0)
 	col.add_child(name_lbl)
+	# environment line: a colour dot + the world's name, with its weather tagged on the right
+	if not ed.is_empty():
+		var env_row := hbox(5)
+		var ed_dot := dot(acc, 7)
+		ed_dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		env_row.add_child(ed_dot)
+		var env_lbl := L(str(ed.name), "body", 600, 10, acc, false, 0.02, true)
+		env_lbl.clip_text = true
+		env_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		env_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		env_row.add_child(env_lbl)
+		var weather_s := str(ed.get("weather", "none"))
+		if weather_s != "none" and weather_s != "":
+			var w_lbl := L(weather_s.capitalize(), "body", 500, 9, DIM, false, 0.04, true)
+			w_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			env_row.add_child(w_lbl)
+		col.add_child(env_row)
 	var meta := vbox(2)
 	# seed is always shown so every tile stays shareable, best time sits on its own line below
 	var seed_lbl := L(seed_s, "mono", 500, 10, DIM)
@@ -1585,7 +1597,12 @@ func show_track_action(seed_s: String, env_s: String, title: String, is_fav: boo
 	var acc := U.css(Envs.DATA[env_s].accent) if Envs.DATA.has(env_s) else accent
 	var env_name := str(Envs.DATA[env_s].name) if Envs.DATA.has(env_s) else env_s
 	var bt = _best_time(seed_s)
-	var sub := env_name + "  \u00b7  " + seed_s
+	var sub := env_name
+	if Envs.DATA.has(env_s):
+		var weather_s := str(Envs.DATA[env_s].get("weather", "none"))
+		if weather_s != "none" and weather_s != "":
+			sub += "  \u00b7  " + weather_s.capitalize()
+	sub += "  \u00b7  " + seed_s
 	if bt != null:
 		sub += "\nYour best " + U.fmt(bt)
 	track_action_sub.text = sub
@@ -2033,23 +2050,8 @@ func _build_modals() -> void:
 	fbox.add_child(f_track)
 	f_time = L("0:00.000", "mono", 700, 52, FG, false, -0.03)
 	fbox.add_child(f_time)
-	var rr := hbox(10)
-	var badge := glass(PANEL2, Color(0, 0, 0, 0), 15.0)
-	badge.custom_minimum_size = Vector2(0, 30)
-	badge.pad(12, 0, 12, 0)
-	var brow := hbox(8)
-	f_medal_dot = dot(Color.WHITE)
-	f_medal_dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	brow.add_child(f_medal_dot)
-	f_medal = L("No medal", "body", 600, 12, FG, false, 0.12, true)
-	f_medal.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	brow.add_child(f_medal)
-	badge.add_child(brow)
-	rr.add_child(badge)
 	f_delta = L("", "mono", 700, 15, FG)
-	f_delta.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	rr.add_child(f_delta)
-	fbox.add_child(rr)
+	fbox.add_child(f_delta)
 	f_rank = L("", "body", 600, 12, accent, false, 0.12, true)
 	f_rank.visible = false
 	fbox.add_child(f_rank)
@@ -4070,14 +4072,6 @@ func _sync_card_best() -> void:
 	var bt = _best_time(game.track.seed) if game.track != null else null
 	card_best_lbl.text = ("BEST  " + U.fmt(bt)) if bt != null else "NOT RACED YET"
 	card_best_lbl.add_theme_color_override("font_color", accent if bt != null else DIM)
-	var med = null
-	if bt != null and game.track != null and game.track.medals is Dictionary:
-		med = CarSim.medal_for(bt, game.track.medals)
-	if card_best_dot:
-		card_best_dot.visible = med != null
-		if med != null:
-			card_best_dot.col = MEDAL_COL[med]
-			card_best_dot.queue_redraw()
 
 
 func set_net_status(text: String) -> void:
@@ -4231,18 +4225,12 @@ func render_progression(data: Dictionary) -> void:
 	var unlocked = data.get("achievements", data.get("unlocked", {}))
 	if not (unlocked is Dictionary):
 		unlocked = {}
-	var medals = data.get("medals", {})
-	if not (medals is Dictionary):
-		medals = {}
 	var envs = data.get("environments", {})
 	var stats := {
 		"runs": int(data.get("runs", 0)),
 		"tracks": int(data.get("tracks", 0)),
 		"environments": envs.size() if envs is Dictionary else 0,
 		"event_count": int(data.get("event_count", 0)),
-		"medals_any": int(medals.get("any", 0)),
-		"medals_gold": int(medals.get("gold", 0)),
-		"medals_author": int(medals.get("author", 0)),
 	}
 	var done := 0
 	for a in ACHIEVEMENTS:
@@ -4950,21 +4938,9 @@ func hide_finish() -> void:
 		focus.release_focus()
 
 
-func show_finish(track_txt: String, t: float, medal, delta_txt: String, delta_col: Color, pb, is_pb := false) -> void:
+func show_finish(track_txt: String, t: float, delta_txt: String, delta_col: Color, pb, is_pb := false) -> void:
 	f_track.text = track_txt.to_upper()
 	f_time.text = U.fmt(t)
-	if medal != null:
-		var md: Array = []
-		for m in CarSim.MEDALS:
-			if m[0] == medal:
-				md = m
-		f_medal_dot.visible = true
-		(f_medal_dot as Dot).col = MEDAL_COL[medal]
-		f_medal_dot.queue_redraw()
-		f_medal.text = (md[1] + " medal").to_upper()
-	else:
-		f_medal_dot.visible = false
-		f_medal.text = "NO MEDAL"
 	f_delta.text = delta_txt
 	f_delta.add_theme_color_override("font_color", delta_col)
 	f_pp.visible = false

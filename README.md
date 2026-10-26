@@ -28,20 +28,20 @@ players who share a code race the exact same track. Find the line, set the time,
 
 <table>
   <tr>
-    <td width="50%"><img src="website/public/screenshots/menu.webp" alt="Play screen with generated track, seed and minimap" /></td>
-    <td width="50%"><img src="website/public/screenshots/garage.webp" alt="Garage with car paint and booster customization" /></td>
+	<td width="50%"><img src="website/public/screenshots/menu.webp" alt="Play screen with generated track, seed and minimap" /></td>
+	<td width="50%"><img src="website/public/screenshots/garage.webp" alt="Garage with car paint and booster customization" /></td>
   </tr>
   <tr>
-    <td align="center"><b>Play</b> — roll or paste a seed, preview the track, race.</td>
-    <td align="center"><b>Garage</b> — tune paint, finish and booster color.</td>
+	<td align="center"><b>Play</b> — roll or paste a seed, preview the track, race.</td>
+	<td align="center"><b>Garage</b> — tune paint, finish and booster color.</td>
   </tr>
   <tr>
-    <td width="50%"><img src="website/public/screenshots/tracks.webp" alt="Tracks screen with saved and recent circuits shown as minimaps" /></td>
-    <td width="50%"><img src="website/public/screenshots/env/neon.webp" alt="Racing the Neon synthwave city circuit" /></td>
+	<td width="50%"><img src="website/public/screenshots/tracks.webp" alt="Tracks screen with saved and recent circuits shown as minimaps" /></td>
+	<td width="50%"><img src="website/public/screenshots/env/neon.webp" alt="Racing the Neon synthwave city circuit" /></td>
   </tr>
   <tr>
-    <td align="center"><b>Tracks</b> — saved &amp; recent circuits, each with its seed.</td>
-    <td align="center"><b>Race</b> — 120 Hz handling, drift, boost and pickups.</td>
+	<td align="center"><b>Tracks</b> — saved &amp; recent circuits, each with its seed.</td>
+	<td align="center"><b>Race</b> — 120 Hz handling, drift, boost and pickups.</td>
   </tr>
 </table>
 
@@ -69,28 +69,28 @@ environment is derived from the seed, or forced with a seed prefix — e.g. `GRI
 
 <table>
   <tr>
-    <td width="25%"><img src="website/public/screenshots/env/canyon.webp" alt="Canyon — red-rock desert" /><p align="center"><b>Canyon</b><br><sub>Red-rock desert</sub></p></td>
-    <td width="25%"><img src="website/public/screenshots/env/alpine.webp" alt="Alpine — snowbound peaks" /><p align="center"><b>Alpine</b><br><sub>Snowbound peaks</sub></p></td>
-    <td width="25%"><img src="website/public/screenshots/env/neon.webp" alt="Neon — synthwave city" /><p align="center"><b>Neon</b><br><sub>Synthwave city</sub></p></td>
-    <td width="25%"><img src="website/public/screenshots/env/grove.webp" alt="Grove — rainy woodland" /><p align="center"><b>Grove</b><br><sub>Rainy woodland</sub></p></td>
+	<td width="25%"><img src="website/public/screenshots/env/canyon.webp" alt="Canyon — red-rock desert" /><p align="center"><b>Canyon</b><br><sub>Red-rock desert</sub></p></td>
+	<td width="25%"><img src="website/public/screenshots/env/alpine.webp" alt="Alpine — snowbound peaks" /><p align="center"><b>Alpine</b><br><sub>Snowbound peaks</sub></p></td>
+	<td width="25%"><img src="website/public/screenshots/env/neon.webp" alt="Neon — synthwave city" /><p align="center"><b>Neon</b><br><sub>Synthwave city</sub></p></td>
+	<td width="25%"><img src="website/public/screenshots/env/grove.webp" alt="Grove — rainy woodland" /><p align="center"><b>Grove</b><br><sub>Rainy woodland</sub></p></td>
   </tr>
   <tr>
-    <td><img src="website/public/screenshots/env/island.webp" alt="Island — tropical coast" /><p align="center"><b>Island</b><br><sub>Tropical coast</sub></p></td>
-    <td><img src="website/public/screenshots/env/country.webp" alt="Countryside — open farmland" /><p align="center"><b>Countryside</b><br><sub>Open farmland</sub></p></td>
-    <td><img src="website/public/screenshots/env/volcano.webp" alt="Volcano — lava fields" /><p align="center"><b>Volcano</b><br><sub>Lava fields</sub></p></td>
-    <td><img src="website/public/screenshots/env/greece.webp" alt="Ancient Greece — marble coast" /><p align="center"><b>Ancient Greece</b><br><sub>Marble coast</sub></p></td>
+	<td><img src="website/public/screenshots/env/island.webp" alt="Island — tropical coast" /><p align="center"><b>Island</b><br><sub>Tropical coast</sub></p></td>
+	<td><img src="website/public/screenshots/env/country.webp" alt="Countryside — open farmland" /><p align="center"><b>Countryside</b><br><sub>Open farmland</sub></p></td>
+	<td><img src="website/public/screenshots/env/volcano.webp" alt="Volcano — lava fields" /><p align="center"><b>Volcano</b><br><sub>Lava fields</sub></p></td>
+	<td><img src="website/public/screenshots/env/greece.webp" alt="Ancient Greece — marble coast" /><p align="center"><b>Ancient Greece</b><br><sub>Marble coast</sub></p></td>
   </tr>
   <tr>
-    <td><img src="website/public/screenshots/env/town.webp" alt="Old Town — cobbled streets" /><p align="center"><b>Old Town</b><br><sub>Cobbled streets</sub></p></td>
-    <td><img src="website/public/screenshots/env/wetlands.webp" alt="Wetlands — misty bayou" /><p align="center"><b>Wetlands</b><br><sub>Misty bayou</sub></p></td>
-    <td><img src="website/public/screenshots/env/harbor.webp" alt="Harbor — working docks" /><p align="center"><b>Harbor</b><br><sub>Working docks</sub></p></td>
-    <td><img src="website/public/screenshots/env/saltflats.webp" alt="Salt Flats — mirror pan" /><p align="center"><b>Salt Flats</b><br><sub>Mirror pan</sub></p></td>
+	<td><img src="website/public/screenshots/env/town.webp" alt="Old Town — cobbled streets" /><p align="center"><b>Old Town</b><br><sub>Cobbled streets</sub></p></td>
+	<td><img src="website/public/screenshots/env/wetlands.webp" alt="Wetlands — misty bayou" /><p align="center"><b>Wetlands</b><br><sub>Misty bayou</sub></p></td>
+	<td><img src="website/public/screenshots/env/harbor.webp" alt="Harbor — working docks" /><p align="center"><b>Harbor</b><br><sub>Working docks</sub></p></td>
+	<td><img src="website/public/screenshots/env/saltflats.webp" alt="Salt Flats — mirror pan" /><p align="center"><b>Salt Flats</b><br><sub>Mirror pan</sub></p></td>
   </tr>
   <tr>
-    <td><img src="website/public/screenshots/env/nocturne.webp" alt="Nocturne Bloom — bioluminescent jungle" /><p align="center"><b>Nocturne Bloom</b><br><sub>Bioluminescent jungle</sub></p></td>
-    <td><img src="website/public/screenshots/env/duskmesa.webp" alt="Dusk Mesa — vaporwave desert" /><p align="center"><b>Dusk Mesa</b><br><sub>Vaporwave desert</sub></p></td>
-    <td><img src="website/public/screenshots/env/venice.webp" alt="Venice — canal city" /><p align="center"><b>Venice</b><br><sub>Canal city</sub></p></td>
-    <td><img src="website/public/screenshots/env/grid.webp" alt="Grid — lightgrid void" /><p align="center"><b>Grid</b><br><sub>Lightgrid void</sub></p></td>
+	<td><img src="website/public/screenshots/env/nocturne.webp" alt="Nocturne Bloom — bioluminescent jungle" /><p align="center"><b>Nocturne Bloom</b><br><sub>Bioluminescent jungle</sub></p></td>
+	<td><img src="website/public/screenshots/env/duskmesa.webp" alt="Dusk Mesa — vaporwave desert" /><p align="center"><b>Dusk Mesa</b><br><sub>Vaporwave desert</sub></p></td>
+	<td><img src="website/public/screenshots/env/venice.webp" alt="Venice — canal city" /><p align="center"><b>Venice</b><br><sub>Canal city</sub></p></td>
+	<td><img src="website/public/screenshots/env/grid.webp" alt="Grid — lightgrid void" /><p align="center"><b>Grid</b><br><sub>Lightgrid void</sub></p></td>
   </tr>
 </table>
 

@@ -22,8 +22,6 @@ const STEER_RETURN := 15.0
 ## seconds of continuous drifting for the blue, orange and purple mini-turbo, and the boost each gives
 const TURBO := [0.6, 1.25, 1.95]
 const TURBO_T := [0.0, 0.45, 0.8, 1.15]
-const AUTHOR_K := 0.94
-const MEDALS := [["author", "Author"], ["gold", "Gold"], ["silver", "Silver"], ["bronze", "Bronze"]]
 
 # --- state (the "car" object of the web build)
 var x := 0.0
@@ -60,48 +58,6 @@ var impact := 0.0
 
 static func yaw_at(v: float) -> float:
 	return U.lerpf2(YAW_LOW, YAW_HIGH, U.clampf2(v / VMAX, 0.0, 1.0)) * minf(1.0, v / 6.0)
-
-
-static func medal_times(t: TrackData) -> Dictionary:
-	var N := t.n
-	var v := PackedFloat32Array()
-	v.resize(N)
-	for i in N:
-		var R := 1.0 / maxf(absf(t.k[i]), 1e-4)
-		var lo := 0.0
-		var hi := VMAX
-		for it in 22:
-			var m := (lo + hi) / 2.0
-			if m / (yaw_at(m) * 1.12) <= R:
-				lo = m
-			else:
-				hi = m
-		v[i] = maxf(lo, 12.0)
-	var aA := ACCEL * 0.62
-	var aB := BRAKE * 0.8
-	for pass_i in 2:
-		for i in N:
-			var j := (i + 1) % N
-			v[j] = minf(v[j], sqrt(float(v[i]) * v[i] + 2.0 * aA * U.DS))
-		var i2 := N - 1
-		while i2 >= 0:
-			var j := (i2 + 1) % N
-			v[i2] = minf(v[i2], sqrt(float(v[j]) * v[j] + 2.0 * aB * U.DS))
-			i2 -= 1
-	var lap := 0.0
-	for i in N:
-		lap += U.DS / v[i]
-	var author := U.jround((lap * U.LAPS + 1.6) * AUTHOR_K * 10.0) / 10.0
-	return {"author": author, "gold": U.jround(author * 1.07 * 10.0) / 10.0, "silver": U.jround(author * 1.2 * 10.0) / 10.0, "bronze": U.jround(author * 1.42 * 10.0) / 10.0}
-
-
-static func medal_for(t, m: Dictionary):
-	if t == null:
-		return null
-	for md in MEDALS:
-		if float(t) <= float(m[md[0]]):
-			return md[0]
-	return null
 
 
 ## One fixed physics step. inp: {gas, brake, drift, steer, analog}

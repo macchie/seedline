@@ -22,7 +22,6 @@ var family: String = ""
 var complexity: float = 0.0
 var name: String = ""
 var cps := PackedInt32Array()
-var medals: Dictionary = {}
 var pads: Array = []
 var _hidden := PackedInt32Array()
 var _hidden_built := false   # {i: sample index, lat: lateral offset, big: bool}

@@ -304,7 +304,6 @@ func load_track(seed_str: String, env_key = null) -> void:
 	for f in favs:
 		if f.seed == p.seed:
 			f.name = track.name
-			f.medals = track.medals
 			f.env = track.env_key
 			f.v = 5
 			Store.set_value("favs", favs)
@@ -927,9 +926,8 @@ func finish_race(t: float) -> void:
 				Store.set_value("favs", favs)
 	run_info = null
 	var prev_medal := ui.current_medal_order()
-	var m = CarSim.medal_for(t, track.medals)
 	if net.eligible(track.seed):
-		net.submit_run(track.seed, track.env_key, t, track.length, splits, U.LAPS, server_ghost_rec if server_ghost_complete else [], str(m) if m != null else "")
+		net.submit_run(track.seed, track.env_key, t, track.length, splits, U.LAPS, server_ghost_rec if server_ghost_complete else [])
 	var seed_now := track.seed
 	get_tree().create_timer(1.3).timeout.connect(func():
 		if state != "finished" or track.seed != seed_now:
@@ -941,7 +939,7 @@ func finish_race(t: float) -> void:
 		else:
 			dtxt = ("New best " if is_pb else "") + U.fmt_delta(t - prev_best)
 			dcol = Ui.FAST if t < prev_best else Ui.SLOW
-		ui.show_finish(track.name + " · " + track.seed, t, m, dtxt, dcol, minf(t, prev_best if prev_best != null else t), is_pb)
+		ui.show_finish(track.name + " · " + track.seed, t, dtxt, dcol, minf(t, prev_best if prev_best != null else t), is_pb)
 		auto_next_t = 30.0
 		ui.set_next_countdown(30)
 		ui.set_finish_rank(run_info)
@@ -1065,7 +1063,7 @@ func toggle_fav() -> void:
 		ui.toast("Removed from saved")
 	else:
 		var b = Store.get_value("best5." + track.seed, null)
-		favs.push_front({"seed": track.seed, "name": track.name, "env": track.env_key, "best": b.t if b != null else null, "medals": track.medals, "v": 5})
+		favs.push_front({"seed": track.seed, "name": track.name, "env": track.env_key, "best": b.t if b != null else null, "v": 5})
 		ui.toast("Saved " + track.name)
 	Store.set_value("favs", favs)
 	ui.sync_icons()

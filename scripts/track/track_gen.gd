@@ -841,7 +841,6 @@ static func generate(seed: String, env_key: String) -> TrackData:
 			c += 1
 		tr.cps.append(c % N)
 	tr.pads = _gen_pads(tr)
-	tr.medals = CarSim.medal_times(tr)
 	return tr
 
 

@@ -280,7 +280,7 @@ func fetch_leaderboards() -> void:
 		leaderboards_ready.emit({"error": true})
 
 
-func submit_run(seed: String, env: String, time_s: float, length_m: float, splits: Array, laps: int, ghost: Array = [], medal := "") -> void:
+func submit_run(seed: String, env: String, time_s: float, length_m: float, splits: Array, laps: int, ghost: Array = []) -> void:
 	if not eligible(seed):
 		return
 	var sp: Array = []
@@ -296,8 +296,6 @@ func submit_run(seed: String, env: String, time_s: float, length_m: float, split
 		"splits": sp,
 		"version": str(ProjectSettings.get_setting("application/config/version", "")),
 	}
-	if medal != "":
-		entry.medal = medal
 	if ghost.size() >= 6 and ghost.size() % 3 == 0:
 		entry.ghost = ghost.duplicate()
 	var q: Array = Store.get_value(QUEUE_KEY, [])
