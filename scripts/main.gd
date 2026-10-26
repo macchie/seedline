@@ -9,7 +9,7 @@ const N_WARN_AHEAD := 12
 const GHOST_FLEET_SCRIPT = preload("res://scripts/world/rival_ghost_fleet.gd")
 
 # --- persistent options (same keys and defaults as localStorage in the web build)
-var opts := {"gfx": "high", "sound": true, "side": "left", "sensV": 75, "stats": "", "zoom": 50, "msaa": "off", "quality": "high"}
+var opts := {"gfx": "high", "sound": true, "side": "left", "sensV": 75, "stats": "", "zoom": 50, "msaa": "off", "quality": "high", "uiscale": 50, "fov": 50, "haptics": "on", "musicvol": 55, "sfxvol": 100}
 var car_cfg := {"color": "#e8402c", "finish": "gloss", "boost_color": "#38e8ff", "model": "formula"}
 var favs: Array = []
 var recent_tracks: Array = []
@@ -65,6 +65,8 @@ var replay_done := false
 var run_start_boost_t := 0.0
 var run_start_boost_amt := CarSim.BOOST_START
 var run_start_turbo := 0
+var _was_boost_held := false
+var _boost_buzz_t := 0.0
 var shake := 0.0
 var menu_s := 0.0
 var menu_tab := "drive"
@@ -228,14 +230,17 @@ func _build_scene() -> void:
 func _on_resize() -> void:
 	var win := get_window()
 	dpr = _device_pixel_ratio()
+	# the interface-scale preference folds into the content scale: a bigger scale shrinks the logical
+	# canvas size so every Control maps to more physical pixels. 3D render resolution still uses dpr.
+	var eff := dpr * _ui_scale()
 	win.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
 	win.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
-	win.content_scale_size = Vector2i(maxi(1, int(win.size.x / dpr)), maxi(1, int(win.size.y / dpr)))
+	win.content_scale_size = Vector2i(maxi(1, int(win.size.x / eff)), maxi(1, int(win.size.y / eff)))
 	var sa := DisplayServer.get_display_safe_area()
 	var ws := Vector2(win.size)
 	var sr := DisplayServer.screen_get_usable_rect()
 	if sa.size.x > 0 and OS.has_feature("mobile"):
-		ui.safe = {"t": sa.position.y / dpr, "b": maxf(0.0, ws.y - sa.end.y) / dpr, "l": sa.position.x / dpr, "r": maxf(0.0, ws.x - sa.end.x) / dpr}
+		ui.safe = {"t": sa.position.y / eff, "b": maxf(0.0, ws.y - sa.end.y) / eff, "l": sa.position.x / eff, "r": maxf(0.0, ws.x - sa.end.x) / eff}
 	_apply_resolution()
 	ui.relayout()
 
@@ -296,8 +301,8 @@ func _apply_aa() -> void:
 # other half and is baked into the world at build time (see build_world / _q_prop_density).
 func _apply_quality_runtime() -> void:
 	var q := str(opts.get("quality", "high"))
-	var base_shadow := 1024 if is_touch else 2048
-	var shadow_size: int = {"low": base_shadow / 2, "med": base_shadow * 3 / 4, "high": base_shadow}.get(q, base_shadow)
+	var sizes: Dictionary = {"low": 512, "med": 768, "high": 1024} if is_touch else {"low": 1024, "med": 1536, "high": 2048}
+	var shadow_size: int = sizes.get(q, sizes["high"])
 	RenderingServer.directional_shadow_atlas_set_size(shadow_size, true)
 	sun.directional_shadow_max_distance = {"low": 360.0, "med": 440.0, "high": 520.0}.get(q, 520.0)
 	if cam:
@@ -357,6 +362,8 @@ func load_track(seed_str: String, env_key = null) -> void:
 	cam_init = false
 	menu_s = 0.0
 	fx.clear_skids()
+	# swap the music bed to this environment's mood (no-op until audio is initialised on first race)
+	sfx.play_music(track.env_key)
 	ui.refresh_menu()
 	fetch_leaderboard()
 
@@ -580,9 +587,40 @@ func release_all_touch() -> void:
 	sync_pedals()
 
 
+## A short feedback buzz keyed off a rough duration in ms (touch devices) that also drives gamepad
+## rumble scaled from the same value. Off during replays and when the player disables vibration.
+## The controller curve is firm (0.4 floor) and runs longer than the raw ms — pad motors need far
+## more push than a phone buzz to register, so the old ms/1000 mapping was almost imperceptible.
 func haptic(ms: int) -> void:
-	if is_touch and state != "replay":
-		Input.vibrate_handheld(ms)
+	if is_touch:
+		if state != "replay" and str(opts.get("haptics", "on")) != "off":
+			Input.vibrate_handheld(ms)
+	_rumble(clampf(ms / 20.0, 0.4, 1.0), clampf(ms / 26.0, 0.4, 1.0), clampf(ms / 60.0, 0.14, 0.45))
+
+
+## Controller-only rumble (weak/strong motor magnitudes 0..1, duration in seconds).
+func _rumble(weak: float, strong: float, dur: float) -> void:
+	if state == "replay" or str(opts.get("haptics", "on")) == "off":
+		return
+	for d in Input.get_connected_joypads():
+		Input.start_joy_vibration(d, weak, strong, dur)
+
+
+## Boost feel: a punch the moment the boost button engages, then a steady thrum for as long as any
+## boost is active (held meter, mini-turbo or pad), refreshed often enough to feel continuous.
+func _boost_haptics(dt: float) -> void:
+	var active := state == "race" or state == "finished"
+	var held := active and car.boost_held
+	if held and not _was_boost_held:
+		haptic(18)
+	_was_boost_held = held
+	if active and car.is_boosting():
+		_boost_buzz_t -= dt
+		if _boost_buzz_t <= 0.0:
+			_boost_buzz_t = 0.1
+			_rumble(0.22, 0.36, 0.14)
+	else:
+		_boost_buzz_t = 0.0
 
 
 func read_input() -> Dictionary:
@@ -886,6 +924,9 @@ func restart(quick: bool) -> void:
 
 func start_race() -> void:
 	sfx.init(opts.sound)
+	_apply_audio()
+	if track != null:
+		sfx.play_music(track.env_key)
 	_record_recent_track()
 	set_menu(false)
 	ui.show_hud(true)
@@ -1285,6 +1326,29 @@ func toggle_sound() -> void:
 	ui.sync_opts()
 	sfx.init(opts.sound)
 	sfx.set_on(opts.sound)
+	_apply_audio()
+	if track != null:
+		sfx.play_music(track.env_key)
+
+
+func _apply_audio() -> void:
+	sfx.set_sfx_vol(U.clampf2(float(opts.get("sfxvol", 100)), 0.0, 100.0) / 100.0)
+	sfx.set_music_vol(U.clampf2(float(opts.get("musicvol", 55)), 0.0, 100.0) / 100.0)
+
+
+# 0..100 volume for the music bed / sound effects (independent of the global sound on/off).
+func set_music_vol(v: int) -> void:
+	opts.musicvol = v
+	Store.set_value("opts", opts)
+	ui.sync_opts()
+	sfx.set_music_vol(U.clampf2(float(v), 0.0, 100.0) / 100.0)
+
+
+func set_sfx_vol(v: int) -> void:
+	opts.sfxvol = v
+	Store.set_value("opts", opts)
+	ui.sync_opts()
+	sfx.set_sfx_vol(U.clampf2(float(v), 0.0, 100.0) / 100.0)
 
 
 func set_opt(k: String, v) -> void:
@@ -1310,6 +1374,29 @@ func set_zoom(v: int) -> void:
 	opts.zoom = v
 	Store.set_value("opts", opts)
 	ui.sync_opts()
+
+
+# 0..100, 50 = 100% interface scale (±25%); re-runs the content-scale math so the HUD/menu resize now.
+func set_ui_scale(v: int) -> void:
+	opts.uiscale = v
+	Store.set_value("opts", opts)
+	ui.sync_opts()
+	_on_resize()
+
+
+# 0..100, 50 = the default 46° field of view (±10°); _update_camera reads it live each frame.
+func set_fov(v: int) -> void:
+	opts.fov = v
+	Store.set_value("opts", opts)
+	ui.sync_opts()
+
+
+func _ui_scale() -> float:
+	return 1.0 + (U.clampf2(float(opts.get("uiscale", 50)), 0.0, 100.0) - 50.0) / 50.0 * 0.25
+
+
+func _fov_base() -> float:
+	return 46.0 + (U.clampf2(float(opts.get("fov", 50)), 0.0, 100.0) - 50.0) / 50.0 * 10.0
 
 
 func set_car_color(c: String) -> void:
@@ -1395,6 +1482,7 @@ func _process(delta: float) -> void:
 				car.boost_t = 1.1
 				car.turbo = 2
 				ui.toast("Perfect start!")
+				haptic(22)
 			run_start_boost_t = car.boost_t
 			run_start_boost_amt = car.boost_amt
 			run_start_turbo = car.turbo
@@ -1428,6 +1516,7 @@ func _process(delta: float) -> void:
 	_update_car_visuals(dt, x, z, h, speed)
 	_update_ghost()
 	_update_effects(dt, x, z, h, speed)
+	_boost_haptics(dt)
 	# gates and living scenery
 	var acc_col := U.css(env.accent)
 	for k in world.gates.size():
@@ -1791,7 +1880,7 @@ func _update_camera(dt: float, x: float, z: float, h: float, speed: float) -> vo
 	var ff: float = cdist + float(env.fogFar) - 40.0
 	RenderingServer.global_shader_parameter_set("g_fog", Vector2(fn, ff))
 	ink_mat.set_shader_parameter("fogr", Vector2(fn, ff))
-	var fov := 46.0 + (7.0 if (car.is_boosting() and state != "menu") else 0.0) + U.clampf2((speed - 42.0) / 30.0, 0.0, 1.0) * 4.0
+	var fov := _fov_base() + (7.0 if (car.is_boosting() and state != "menu") else 0.0) + U.clampf2((speed - 42.0) / 30.0, 0.0, 1.0) * 4.0
 	cam_fov = U.lerpf2(cam_fov, fov, 0.08)
 	cam.fov = cam_fov
 	# keep the menu's subject clear of the sheet (setViewOffset in the web build)

@@ -6,19 +6,41 @@ extends Node
 const RATE := 44100
 const MASTER := 0.48
 
+# Procedural music beds: a soft sustained chord pad (plus a gentle pulse for the driving moods), one
+# per mood. root Hz, chord semitone intervals, pulse bpm (0 = none), brightness 0..1.
+const MUSIC_MOODS := {
+	"warm": {"root": 110.0, "ivals": [0, 7, 12, 16], "bpm": 0, "bright": 0.5},
+	"calm": {"root": 98.0, "ivals": [0, 7, 12, 14], "bpm": 0, "bright": 0.4},
+	"dark": {"root": 82.4, "ivals": [0, 3, 7, 10], "bpm": 90, "bright": 0.32},
+	"neon": {"root": 130.8, "ivals": [0, 4, 7, 11], "bpm": 120, "bright": 0.72},
+}
+const ENV_MOOD := {
+	"CANYON": "warm", "ALPINE": "calm", "NEON": "neon", "GROVE": "calm",
+	"ISLAND": "warm", "COUNTRY": "warm", "VOLCANO": "dark", "GREECE": "warm",
+	"TOWN": "calm", "WETLANDS": "dark", "HARBOR": "calm", "SALTFLATS": "warm",
+	"NOCTURNE": "neon", "DUSKMESA": "neon", "VENICE": "warm", "GRID": "neon",
+}
+
 var on := true
 var inited := false
 var engine_p: AudioStreamPlayer
 var skid_p: AudioStreamPlayer
 var wind_p: AudioStreamPlayer
+var music_p: AudioStreamPlayer
 var engine_lp: AudioEffectLowPassFilter
 var bus_engine := -1
 var bus_skid := -1
 var bus_wind := -1
+var bus_sfx := -1
+var bus_music := -1
 var bus_master := -1
 var noise: PackedFloat32Array
 var _cache := {}
 var _pool: Array = []
+var _sfx_vol := 1.0
+var _music_vol := 0.55
+var _music_mood := ""
+var _music_cache := {}
 
 # smoothed parameters (setTargetAtTime)
 var _fr := 40.0
@@ -35,13 +57,13 @@ var t_wg := 0.0
 var t_mg := MASTER
 
 
-func _bus(name: String, effects: Array) -> int:
+func _bus(name: String, effects: Array, send: String = "SeedlineMaster") -> int:
 	var i := AudioServer.get_bus_index(name)
 	if i < 0:
 		AudioServer.add_bus()
 		i = AudioServer.bus_count - 1
 		AudioServer.set_bus_name(i, name)
-		AudioServer.set_bus_send(i, "SeedlineMaster")
+		AudioServer.set_bus_send(i, send)
 		for e in effects:
 			AudioServer.add_bus_effect(i, e)
 	return i
@@ -60,18 +82,24 @@ func init(sound_on: bool) -> void:
 		bus_master = AudioServer.bus_count - 1
 		AudioServer.set_bus_name(bus_master, "SeedlineMaster")
 		AudioServer.set_bus_send(bus_master, "Master")
+	# a sfx group and a music group hang off the master so each has its own level (volume split),
+	# while the master bus still carries the global on/off mute for everything
+	bus_sfx = _bus("SeedlineSfx", [])
+	bus_music = _bus("SeedlineMusic", [])
+	AudioServer.set_bus_volume_db(bus_sfx, _db(_sfx_vol))
+	AudioServer.set_bus_volume_db(bus_music, _db(_music_vol))
 	engine_lp = AudioEffectLowPassFilter.new()
 	engine_lp.cutoff_hz = 600.0
 	engine_lp.resonance = 0.35
-	bus_engine = _bus("SeedlineEngine", [engine_lp])
+	bus_engine = _bus("SeedlineEngine", [engine_lp], "SeedlineSfx")
 	var bp := AudioEffectBandPassFilter.new()
 	bp.cutoff_hz = 1900.0
 	bp.resonance = 0.7
-	bus_skid = _bus("SeedlineSkid", [bp])
+	bus_skid = _bus("SeedlineSkid", [bp], "SeedlineSfx")
 	var lp := AudioEffectLowPassFilter.new()
 	lp.cutoff_hz = 520.0
 	lp.resonance = 0.5
-	bus_wind = _bus("SeedlineWind", [lp])
+	bus_wind = _bus("SeedlineWind", [lp], "SeedlineSfx")
 	# white noise shared by the loops and one-shots
 	noise = PackedFloat32Array()
 	noise.resize(RATE * 2)
@@ -94,9 +122,12 @@ func init(sound_on: bool) -> void:
 	engine_p.play()
 	skid_p.play()
 	wind_p.play(0.5)
+	music_p = AudioStreamPlayer.new()
+	music_p.bus = "SeedlineMusic"
+	add_child(music_p)
 	for i in 8:
 		var p := AudioStreamPlayer.new()
-		p.bus = "SeedlineMaster"
+		p.bus = "SeedlineSfx"
 		add_child(p)
 		_pool.append(p)
 
@@ -133,6 +164,80 @@ static func _db(g: float) -> float:
 func set_on(v: bool) -> void:
 	on = v
 	t_mg = MASTER if on else 0.0
+
+
+func set_sfx_vol(f: float) -> void:
+	_sfx_vol = clampf(f, 0.0, 1.0)
+	if bus_sfx >= 0:
+		AudioServer.set_bus_volume_db(bus_sfx, _db(_sfx_vol))
+
+
+func set_music_vol(f: float) -> void:
+	_music_vol = clampf(f, 0.0, 1.0)
+	if bus_music >= 0:
+		AudioServer.set_bus_volume_db(bus_music, _db(_music_vol))
+
+
+## Swap the music bed to the given environment's mood (no-op if it is already playing). The pad is
+## rendered once per mood on a worker thread and cached, so the first use of a mood never hitches.
+func play_music(env_key: String) -> void:
+	if not inited or music_p == null:
+		return
+	var mood_id: String = ENV_MOOD.get(env_key, "calm")
+	if mood_id == _music_mood and music_p.playing:
+		return
+	_music_mood = mood_id
+	if not _music_cache.has(mood_id):
+		var mood: Dictionary = MUSIC_MOODS[mood_id]
+		var result := {}
+		var tid := WorkerThreadPool.add_task(func(): result["buf"] = _render_music(mood), false, "seedline music bed")
+		while not WorkerThreadPool.is_task_completed(tid):
+			await get_tree().process_frame
+		WorkerThreadPool.wait_for_task_completion(tid)
+		if not (result.get("buf") is PackedFloat32Array):
+			return
+		_music_cache[mood_id] = _wav(result["buf"], true)
+	if _music_mood != mood_id:
+		return  # env changed again while rendering
+	music_p.stream = _music_cache[mood_id]
+	music_p.play()
+
+
+# A seamless 12s ambient pad: detuned chord voices with a slow per-voice swell, plus a soft beat pulse
+# for driving moods. All oscillator frequencies are quantised to whole cycles over the loop so it tiles
+# without a click. Pure and deterministic, so it is safe to render on a worker thread.
+func _render_music(mood: Dictionary) -> PackedFloat32Array:
+	var dur := 12.0
+	var n := int(dur * RATE)
+	var root: float = mood.root
+	var ivals: Array = mood.ivals
+	var bright: float = mood.bright
+	var bpm: float = mood.bpm
+	var freqs: Array = []
+	for s in ivals:
+		var f: float = round(root * pow(2.0, float(s) / 12.0) * dur) / dur
+		freqs.append(f)
+		freqs.append(round(f * 1.004 * dur) / dur)   # detuned partner for slow chorus beating
+		freqs.append(round(f * 2.0 * dur) / dur)      # octave harmonic for brightness
+	var pulse_f: float = round(root * 0.5 * dur) / dur
+	var out := PackedFloat32Array()
+	out.resize(n)
+	for i in n:
+		var t := float(i) / RATE
+		var s := 0.0
+		for fi in freqs.size():
+			var f: float = freqs[fi]
+			var is_harm := fi % 3 == 2
+			var amp := (0.18 * bright) if is_harm else (1.0 if fi % 3 == 0 else 0.8)
+			var swell := 0.6 + 0.4 * sin(TAU * t / dur + fi * 0.7)
+			s += sin(TAU * f * t) * amp * swell
+		s *= 0.14 / float(ivals.size())
+		if bpm > 0.0:
+			var beat := t * bpm / 60.0
+			var ph := beat - floorf(beat)
+			s += sin(TAU * pulse_f * t) * 0.09 * exp(-ph * 9.0)
+		out[i] = clampf(s, -1.0, 1.0)
+	return out
 
 
 func _process(dt: float) -> void:

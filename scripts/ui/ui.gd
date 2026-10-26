@@ -220,6 +220,14 @@ var sens_slider: HSlider
 var sens_out: Label
 var zoom_slider: HSlider
 var zoom_out: Label
+var uiscale_slider: HSlider
+var uiscale_out: Label
+var fov_slider: HSlider
+var fov_out: Label
+var music_slider: HSlider
+var music_out: Label
+var sfx_slider: HSlider
+var sfx_out: Label
 # options content lives in options_body; it is reparented into options_modal when opened in-game
 var options_body: VBoxContainer
 var options_modal: Control
@@ -1224,7 +1232,10 @@ func render_events(data: Dictionary) -> void:
 					break
 				var rk := int(t.get("rank", shown))
 				c.top_box.add_child(_event_row(rk, str(t.get("name", "racer")), float(t.get("time_ms", 0)) / 1000.0, rk == me_rank))
-	relayout()
+	# only reflow when the Events dialog is actually on screen — events_ready also fires after a race
+	# (fetch_events on finish), and a full relayout there is wasted work behind the finish card
+	if _section_key == "events" and section_modal != null and section_modal.visible:
+		relayout()
 
 
 ## Populate a card's featured-track widgets (minimap, name, environment, best time) from its seed.
@@ -1699,6 +1710,36 @@ func _focus_color_picker() -> void:
 		color_picker.grab_focus()
 
 
+## A labelled 0..100 slider inside an options card: a title+readout row, the slider, and the two end
+## captions. Returns [slider, readout_label]; the caller wires persistence and fills the readout text.
+func _slider_card(col: VBoxContainer, label: String, left: String, right: String, cb: Callable) -> Array:
+	var row := hbox(0)
+	var a := L(label, "body", 500, 12, DIM)
+	a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	a.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(a)
+	var out := L("Default", "body", 600, 11, FG, false, 0.16, true)
+	out.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(out)
+	col.add_child(row)
+	var s := HSlider.new()
+	s.min_value = 0
+	s.max_value = 100
+	s.step = 1
+	s.custom_minimum_size = Vector2(0, 30)
+	s.focus_mode = Control.FOCUS_ALL
+	_style_slider(s)
+	s.value_changed.connect(cb)
+	col.add_child(s)
+	var rl := hbox(0)
+	var gl := L(left, "body", 600, 10, DIM, false, 0.12, true)
+	gl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rl.add_child(gl)
+	rl.add_child(L(right, "body", 600, 10, DIM, false, 0.12, true))
+	col.add_child(rl)
+	return [s, out]
+
+
 func _build_options_pane(parent: Control) -> void:
 	var p := _pane(parent, "options")
 	options_body = vbox(12)
@@ -1737,32 +1778,16 @@ func _build_options_pane(parent: Control) -> void:
 		var s := seg(spec[2], func(v): game.set_opt(k, v))
 		opt_segs[k] = s[1]
 		col.add_child(s[0])
-	# camera zoom: a small dolly in/out around the default chase distance
-	var zcol := group.call(opt_visuals_box, "Camera zoom") as VBoxContainer
-	var zrow := hbox(0)
-	var za := L("Zoom", "body", 500, 12, DIM)
-	za.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	za.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	zrow.add_child(za)
-	zoom_out = L("Default", "body", 600, 11, FG, false, 0.16, true)
-	zoom_out.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	zrow.add_child(zoom_out)
-	zcol.add_child(zrow)
-	zoom_slider = HSlider.new()
-	zoom_slider.min_value = 0
-	zoom_slider.max_value = 100
-	zoom_slider.step = 1
-	zoom_slider.custom_minimum_size = Vector2(0, 30)
-	zoom_slider.focus_mode = Control.FOCUS_ALL
-	_style_slider(zoom_slider)
-	zoom_slider.value_changed.connect(func(v): game.set_zoom(int(v)))
-	zcol.add_child(zoom_slider)
-	var zrl := hbox(0)
-	var zwl := L("Wider", "body", 600, 10, DIM, false, 0.12, true)
-	zwl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	zrl.add_child(zwl)
-	zrl.add_child(L("Closer", "body", 600, 10, DIM, false, 0.12, true))
-	zcol.add_child(zrl)
+	# camera zoom (dolly in/out), interface scale and field of view — each a 0..100 slider, 50 = default
+	var zc := _slider_card(group.call(opt_visuals_box, "Camera zoom"), "Zoom", "Wider", "Closer", func(v): game.set_zoom(int(v)))
+	zoom_slider = zc[0]
+	zoom_out = zc[1]
+	var uc := _slider_card(group.call(opt_visuals_box, "Interface scale"), "Scale", "Smaller", "Larger", func(v): game.set_ui_scale(int(v)))
+	uiscale_slider = uc[0]
+	uiscale_out = uc[1]
+	var fc := _slider_card(group.call(opt_visuals_box, "Field of view"), "FOV", "Narrow", "Wide", func(v): game.set_fov(int(v)))
+	fov_slider = fc[0]
+	fov_out = fc[1]
 
 	# ---------- Controls ----------
 	# touch steering sensitivity
@@ -1796,6 +1821,11 @@ func _build_options_pane(parent: Control) -> void:
 	var hs := seg([["left", "Left thumb"], ["right", "Right thumb"]], func(v): game.set_opt("side", v))
 	opt_segs["side"] = hs[1]
 	hcol.add_child(hs[0])
+	# vibration (touch buzz + gamepad rumble)
+	var vcol := group.call(opt_controls_box, "Vibration") as VBoxContainer
+	var vs := seg([["on", "On"], ["off", "Off"]], func(v): game.set_opt("haptics", v))
+	opt_segs["haptics"] = vs[1]
+	vcol.add_child(vs[0])
 	# key / gamepad bindings
 	var bcol := group.call(opt_controls_box, "Key bindings") as VBoxContainer
 	var ds := seg([["kb", "Keyboard"], ["pad", "Gamepad"]], func(v): _set_bind_device(v))
@@ -1844,6 +1874,13 @@ func _build_options_pane(parent: Control) -> void:
 	_set_bind_device("kb")
 
 	# ---------- Other ----------
+	# audio levels (the global on/off still lives on the top-bar sound button)
+	var mc := _slider_card(group.call(opt_other_box, "Music volume"), "Music", "Off", "Loud", func(v): game.set_music_vol(int(v)))
+	music_slider = mc[0]
+	music_out = mc[1]
+	var sc := _slider_card(group.call(opt_other_box, "Effects volume"), "SFX", "Off", "Loud", func(v): game.set_sfx_vol(int(v)))
+	sfx_slider = sc[0]
+	sfx_out = sc[1]
 	var acol := group.call(opt_other_box, "Account") as VBoxContainer
 	acct_opt_status = L("", "body", 400, 12, DIM)
 	acct_opt_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -3736,6 +3773,10 @@ func set_accent(a: Color, on: Color) -> void:
 		_sync_tab_styles()
 	_style_slider(sens_slider)
 	_style_slider(zoom_slider)
+	_style_slider(uiscale_slider)
+	_style_slider(fov_slider)
+	_style_slider(music_slider)
+	_style_slider(sfx_slider)
 	var f: StyleBoxFlat = seed_in.get_theme_stylebox("focus")
 	f.border_color = accent
 	for m in [pause_modal, finish_modal, acct_modal, seed_modal]:
@@ -4604,6 +4645,18 @@ func sync_opts() -> void:
 	var zv := int(o.get("zoom", 50))
 	zoom_slider.set_value_no_signal(zv)
 	zoom_out.text = "DEFAULT" if zv == 50 else ("%+d%%" % int(round((zv - 50) / 50.0 * 15.0)))
+	var uv := int(o.get("uiscale", 50))
+	uiscale_slider.set_value_no_signal(uv)
+	uiscale_out.text = "%d%%" % int(round((1.0 + (uv - 50) / 50.0 * 0.25) * 100.0))
+	var fv := int(o.get("fov", 50))
+	fov_slider.set_value_no_signal(fv)
+	fov_out.text = "%d°" % int(round(46.0 + (fv - 50) / 50.0 * 10.0))
+	var mvol := int(o.get("musicvol", 55))
+	music_slider.set_value_no_signal(mvol)
+	music_out.text = "%d%%" % mvol
+	var svol := int(o.get("sfxvol", 100))
+	sfx_slider.set_value_no_signal(svol)
+	sfx_out.text = "%d%%" % svol
 	stats_lbl.visible = str(o.stats) != ""
 	sync_icons()
 	relayout()
