@@ -89,7 +89,7 @@ environment is derived from the seed, or forced with a seed prefix — e.g. `GRI
   <tr>
     <td><img src="website/public/screenshots/env/nocturne.webp" alt="Nocturne Bloom — bioluminescent jungle" /><p align="center"><b>Nocturne Bloom</b><br><sub>Bioluminescent jungle</sub></p></td>
     <td><img src="website/public/screenshots/env/duskmesa.webp" alt="Dusk Mesa — vaporwave desert" /><p align="center"><b>Dusk Mesa</b><br><sub>Vaporwave desert</sub></p></td>
-    <td><img src="website/public/screenshots/env/skyway.webp" alt="Skyway — floating cloud city" /><p align="center"><b>Skyway</b><br><sub>Floating cloud city</sub></p></td>
+    <td><img src="website/public/screenshots/env/venice.webp" alt="Venice — canal city" /><p align="center"><b>Venice</b><br><sub>Canal city</sub></p></td>
     <td><img src="website/public/screenshots/env/grid.webp" alt="Grid — lightgrid void" /><p align="center"><b>Grid</b><br><sub>Lightgrid void</sub></p></td>
   </tr>
 </table>

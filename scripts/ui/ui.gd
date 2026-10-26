@@ -227,6 +227,11 @@ var sens_out: Label
 var options_body: VBoxContainer
 var options_modal: Control
 var options_scroll: ScrollContainer
+# options are split into top tabs (Visuals / Controls / Other)
+var opt_tab_seg: Array = []
+var opt_visuals_box: VBoxContainer
+var opt_controls_box: VBoxContainer
+var opt_other_box: VBoxContainer
 # Rocket-League-style nav: Play/Garage stay in the scene, other entries open full-screen dialogs.
 var _active_section := ""
 var events_body: VBoxContainer
@@ -1657,13 +1662,50 @@ func _build_options_pane(parent: Control) -> void:
 	options_body = vbox(12)
 	options_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	p.add_child(options_body)
-	options_body.add_child(eyebrow("Visuals"))
-	var o1 := vbox(6)
-	var head := hbox(0)
-	head.add_child(eyebrow("Touch steering · "))
+	# top tab strip: Visuals / Controls / Other
+	var ts := seg([["visuals", "Visuals"], ["controls", "Controls"], ["other", "Other"]], func(v): _set_options_tab(v))
+	opt_tab_seg = ts[1]
+	options_body.add_child(ts[0])
+	# one scrollable column per tab (only the active one is visible)
+	opt_visuals_box = vbox(12)
+	opt_controls_box = vbox(12)
+	opt_other_box = vbox(12)
+	for b in [opt_visuals_box, opt_controls_box, opt_other_box]:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		options_body.add_child(b)
+	# each setting lives in its own titled card so the page reads cleanly
+	var group := func(host: Control, title: String) -> VBoxContainer:
+		var card := glass(PANEL2, LINE, 12.0)
+		card.pad(16, 14, 16, 14)
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var col := vbox(10)
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		card.add_child(col)
+		col.add_child(eyebrow(title))
+		host.add_child(card)
+		return col
+
+	# ---------- Visuals ----------
+	for spec in [["gfx", "Graphics", [["high", "Toon shading"], ["low", "Battery saver"]]],
+			["stats", "Frame rate readout", [["", "Hidden"], ["1", "Shown"]]]]:
+		var col := group.call(opt_visuals_box, spec[1]) as VBoxContainer
+		var k: String = spec[0]
+		var s := seg(spec[2], func(v): game.set_opt(k, v))
+		opt_segs[k] = s[1]
+		col.add_child(s[0])
+
+	# ---------- Controls ----------
+	# touch steering sensitivity
+	var tcol := group.call(opt_controls_box, "Touch steering") as VBoxContainer
+	var srow := hbox(0)
+	var sa := L("Sensitivity", "body", 500, 12, DIM)
+	sa.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sa.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	srow.add_child(sa)
 	sens_out = L("Quick", "body", 600, 11, FG, false, 0.16, true)
-	head.add_child(sens_out)
-	o1.add_child(head)
+	sens_out.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	srow.add_child(sens_out)
+	tcol.add_child(srow)
 	sens_slider = HSlider.new()
 	sens_slider.min_value = 0
 	sens_slider.max_value = 100
@@ -1672,28 +1714,23 @@ func _build_options_pane(parent: Control) -> void:
 	sens_slider.focus_mode = Control.FOCUS_ALL
 	_style_slider(sens_slider)
 	sens_slider.value_changed.connect(func(v): game.set_sens(int(v)))
-	o1.add_child(sens_slider)
+	tcol.add_child(sens_slider)
 	var rl := hbox(0)
 	var gl := L("Gentle", "body", 600, 10, DIM, false, 0.12, true)
 	gl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rl.add_child(gl)
 	rl.add_child(L("Quick", "body", 600, 10, DIM, false, 0.12, true))
-	o1.add_child(rl)
-	options_body.add_child(o1)
-	for spec in [["side", "Steering hand", [["left", "Left thumb"], ["right", "Right thumb"]]], ["gfx", "Graphics", [["high", "Toon shading"], ["low", "Battery saver"]]],
-			["stats", "Frame rate readout", [["", "Hidden"], ["1", "Shown"]]]]:
-		var o := vbox(6)
-		o.add_child(eyebrow(spec[1]))
-		var k: String = spec[0]
-		var s := seg(spec[2], func(v): game.set_opt(k, v))
-		opt_segs[k] = s[1]
-		o.add_child(s[0])
-		options_body.add_child(o)
-	var o2 := vbox(6)
-	o2.add_child(eyebrow("Controls"))
+	tcol.add_child(rl)
+	# steering hand
+	var hcol := group.call(opt_controls_box, "Steering hand") as VBoxContainer
+	var hs := seg([["left", "Left thumb"], ["right", "Right thumb"]], func(v): game.set_opt("side", v))
+	opt_segs["side"] = hs[1]
+	hcol.add_child(hs[0])
+	# key / gamepad bindings
+	var bcol := group.call(opt_controls_box, "Key bindings") as VBoxContainer
 	var ds := seg([["kb", "Keyboard"], ["pad", "Gamepad"]], func(v): _set_bind_device(v))
 	bind_dev_btns = ds[1]
-	o2.add_child(ds[0])
+	bcol.add_child(ds[0])
 	bind_rows = vbox(4)
 	for a in Bindings.visible_actions(game.DRIFT_ENABLED):
 		var id: String = a[0]
@@ -1719,8 +1756,8 @@ func _build_options_pane(parent: Control) -> void:
 			btns.append(b)
 		bind_btns[id] = btns
 		bind_rows.add_child(row)
-	o2.add_child(bind_rows)
-	var reset := tap(PANEL2, LINE, 10.0)
+	bcol.add_child(bind_rows)
+	var reset := tap(PANEL, LINE, 10.0)
 	reset.custom_minimum_size = Vector2(0, 36)
 	var rl2 := L("Reset to defaults", "body", 600, 12, FG, false, 0.06, true)
 	rl2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1729,29 +1766,37 @@ func _build_options_pane(parent: Control) -> void:
 		_cancel_rebind()
 		Bindings.reset_device(bind_dev)
 		refresh_binds())
-	o2.add_child(reset)
+	bcol.add_child(reset)
 	bind_note = L("", "body", 400, 12, DIM)
 	bind_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	bind_note.custom_minimum_size = Vector2(120, 0)
-	o2.add_child(bind_note)
-	options_body.add_child(o2)
+	bcol.add_child(bind_note)
 	_set_bind_device("kb")
-	var oa := vbox(6)
-	oa.add_child(eyebrow("Account"))
+
+	# ---------- Other ----------
+	var acol := group.call(opt_other_box, "Account") as VBoxContainer
 	acct_opt_status = L("", "body", 400, 12, DIM)
 	acct_opt_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	acct_opt_status.custom_minimum_size = Vector2(120, 0)
-	oa.add_child(acct_opt_status)
+	acol.add_child(acct_opt_status)
 	var ob := _cbtn("Sign in / Create account", false)
 	acct_opt_btn = ob[0]
 	acct_opt_lbl = ob[1]
 	ob[0].pressed.connect(func(): show_account(true))
-	oa.add_child(ob[0])
-	options_body.add_child(oa)
+	acol.add_child(ob[0])
 	net_status_lbl = L("", "body", 400, 12, DIM)
 	net_status_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	net_status_lbl.custom_minimum_size = Vector2(120, 0)
-	options_body.add_child(net_status_lbl)
+	acol.add_child(net_status_lbl)
+
+	_set_options_tab("visuals")
+
+
+func _set_options_tab(v: String) -> void:
+	opt_visuals_box.visible = v == "visuals"
+	opt_controls_box.visible = v == "controls"
+	opt_other_box.visible = v == "other"
+	set_seg(opt_tab_seg, v)
 
 
 func _style_slider(s: HSlider) -> void:
@@ -2749,9 +2794,11 @@ func show_options(on: bool) -> void:
 		sync_account()
 		options_modal.visible = true
 		_set_stick_direction(Vector2i.ZERO)
+		_set_options_tab("visuals")
 		relayout()
 		_rise(options_modal.get_child(0))
-		sens_slider.grab_focus()
+		if opt_tab_seg.size() > 0:
+			(opt_tab_seg[0] as Control).grab_focus()
 	else:
 		options_modal.visible = false
 		_set_stick_direction(Vector2i.ZERO)

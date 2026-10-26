@@ -582,9 +582,11 @@ func _build_terrain() -> void:
 	var field_pal: Array = []
 	for c in [0x86b84c, 0x6c9e3c, 0xcdb350, 0xbb9a42, 0x5f9236, 0x9fbd58, 0x8c6a42, 0xafc35c]:
 		field_pal.append(U.hexc(c))
-	var foam := U.hexc(0xf4f1e6)
+	# shallow-water edge and shoreline blend colours; most worlds use white foam over beach sand,
+	# stone cities (Venice) override them for a greyed quayside instead
+	var foam := U.hexc(e.get("foamCol", 0xf4f1e6))
 	var glow := U.hexc(0xd2501a)
-	var sand := U.hexc(0xc2a878)
+	var sand := U.hexc(e.get("sandCol", 0xc2a878))
 	var fields: bool = e.get("fields", false)
 	var bands := mini(16, vn)
 	var per := int(ceil(float(vn) / bands))

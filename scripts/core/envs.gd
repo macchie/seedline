@@ -3,7 +3,7 @@ class_name Envs
 
 const NIGHT_ENABLED := false  # night mode is built but switched off for now
 
-const KEYS := ["CANYON", "ALPINE", "NEON", "GROVE", "ISLAND", "COUNTRY", "VOLCANO", "GREECE", "TOWN", "WETLANDS", "HARBOR", "SALTFLATS", "NOCTURNE", "DUSKMESA", "SKYWAY", "GRID"]
+const KEYS := ["CANYON", "ALPINE", "NEON", "GROVE", "ISLAND", "COUNTRY", "VOLCANO", "GREECE", "TOWN", "WETLANDS", "HARBOR", "SALTFLATS", "NOCTURNE", "DUSKMESA", "VENICE", "GRID"]
 
 const DATA := {
 	"CANYON": {"name": "Canyon", "accent": "#ff9a3c", "onAccent": "#160b02", "fog": 0xe8ad7c, "fogNear": 130.0, "fogFar": 380.0, "hemiS": 0xffe0bd, "hemiG": 0x8a4a2a, "hemiI": 0.85, "sun": 0xffe6c4, "sunI": 1.2, "sunDir": [-0.8, 1.0, 0.55],
@@ -62,10 +62,10 @@ const DATA := {
 		"gLow": 0x9a5a7a, "gHigh": 0x6a3a64, "shoulder": 0x8a5a6a, "road": "#3a2a3a", "edge": "rgba(255,220,240,.9)", "dash": "rgba(255,180,90,.85)", "curbA": 0xff5a9a, "curbB": 0xffd0e4,
 		"amp": 22.0, "terrace": true, "weather": "dust", "grip": 0.98, "smoke": 0xd8a0c0, "grade": {"tint": [1.08, 0.95, 1.08], "sat": 1.18, "cloud": 0.2, "vig": 0.42}, "birds": [5, 0x3a2030],
 		"words": [["Vapor", "Neon", "Sunset", "Mirage", "Violet", "Afterglow", "Dusk", "Magenta"], ["Mesa", "Bluff", "Butte", "Draw", "Rise", "Flats", "Pass", "Horizon"]]},
-	"SKYWAY": {"name": "Skyway", "accent": "#a9c7ff", "onAccent": "#0a1420", "fog": 0xbfd8ff, "fogNear": 85.0, "fogFar": 300.0, "hemiS": 0xfff2fb, "hemiG": 0xc8d8ff, "hemiI": 1.25, "sun": 0xffffff, "sunI": 1.2, "sunDir": [-0.5, 1.0, 0.4],
-		"gLow": 0xdbe8ff, "gHigh": 0xf4f9ff, "shoulder": 0xcfe0ff, "road": "#424a62", "edge": "rgba(255,255,255,.95)", "dash": "rgba(170,200,255,.85)", "curbA": 0x7aa0ff, "curbB": 0xffffff,
-		"amp": 0.0, "weather": "none", "grip": 0.96, "smoke": 0xeaf0ff, "grade": {"tint": [1.03, 1.03, 1.08], "sat": 1.0, "cloud": 0.62, "vig": 0.0}, "birds": [16, 0xffffff],
-		"words": [["Cirrus", "Zephyr", "Halo", "Cloud", "Aether", "Skybound", "Drift", "Celestial"], ["Span", "Causeway", "Terrace", "Reach", "Viaduct", "Arc", "Way", "Heights"]]},
+	"VENICE": {"name": "Venice", "accent": "#2ba88f", "onAccent": "#03140f", "fog": 0xd6ccba, "fogNear": 120.0, "fogFar": 420.0, "hemiS": 0xf6ecd8, "hemiG": 0x766f62, "hemiI": 0.98, "sun": 0xffdfa6, "sunI": 1.22, "sunDir": [-0.88, 0.76, 0.4],
+		"gLow": 0x9c988c, "gHigh": 0x7e7a70, "shoulder": 0x908b80, "sandCol": 0x9e9a8e, "foamCol": 0xa8b0a6, "road": "#45423c", "edge": "rgba(236,232,222,.9)", "dash": "rgba(236,232,222,.8)", "curbA": 0xc7493a, "curbB": 0xece6d6,
+		"amp": 1.0, "shore": true, "deep": 0x215f52, "river": true, "riverCol": 0x2a7a68, "weather": "none", "grip": 1.0, "smoke": 0xd8d2c6, "lights": 0.45, "grade": {"tint": [1.05, 1.0, 0.94], "sat": 1.08, "cloud": 0.28, "vig": 0.26}, "birds": [18, 0xd8d0c0],
+		"words": [["Rialto", "Canal", "Lido", "Doge", "Murano", "Gondola", "Marco", "Adriatic"], ["Bridge", "Canal", "Lagoon", "Quay", "Piazza", "Fondamenta", "Rio", "Way"]]},
 	"GRID": {"name": "Grid", "accent": "#22e5ff", "onAccent": "#02121a", "fog": 0x05060c, "fogNear": 95.0, "fogFar": 360.0, "hemiS": 0x0a1830, "hemiG": 0x02040a, "hemiI": 0.6, "sun": 0x6aa0ff, "sunI": 0.3, "sunDir": [0.3, 1.0, -0.4],
 		"gLow": 0x05060e, "gHigh": 0x070a16, "shoulder": 0x0a1018, "road": "#0a0f1a", "edge": "rgba(34,229,255,.95)", "dash": "rgba(255,106,31,.85)", "curbA": 0x22e5ff, "curbB": 0xff6a1f,
 		"amp": 0.0, "night": true, "grid": true, "lights": 1.0, "weather": "none", "grip": 1.0, "smoke": 0x3a6a8a, "grade": {"tint": [0.98, 1.0, 1.12], "sat": 1.3, "cloud": 0.0, "vig": 0.6},

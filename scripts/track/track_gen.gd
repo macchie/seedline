@@ -5,8 +5,8 @@ class_name TrackGen
 
 ## Track length range in metres. Must stay inside the server's 1500-5000 m limit
 ## (server/nakama/modules/seedline.lua, CFG.min_length_m / max_length_m).
-const MIN_TRACK_LENGTH := 1500.0
-const MAX_TRACK_LENGTH := 5000.0
+const MIN_TRACK_LENGTH := 1000.0
+const MAX_TRACK_LENGTH := 3500.0
 ## Fraction of the range kept clear at both ends when drawing the target length,
 ## so candidates (which drift after filleting) are not over-rejected.
 const LENGTH_MARGIN := 0.06

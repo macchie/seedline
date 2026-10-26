@@ -586,8 +586,8 @@ func build() -> void:
 			nocturne()
 		"DUSKMESA":
 			dusk_mesa()
-		"SKYWAY":
-			skyway()
+		"VENICE":
+			venice()
 		"GRID":
 			grid_void()
 		_:
@@ -1590,58 +1590,161 @@ func dusk_mesa() -> void:
 	birds(e.birds)
 
 
-# ------------------------------------------------------------------ Skyway: a floating cloud city in a bright sky
-func skyway() -> void:
-	# a dense carpet of soft cloud mounds the road rides across, billowing up along both edges
-	var cloud_mat := T({"color": 0xffffff, "emissive": 0xffffff, "emissive_i": 0.3})
-	var edge := around(380, HW + 1.5, 52.0, 0.2)
-	w.inst(Geo.icosahedron(2.0, 1), cloud_mat, edge, func(p, d, i):
-		var s: float = 1.6 + p.s * 3.2
-		d.position = Vector3(p.x, p.y - 0.3 + p.r * 1.6, p.z)
-		d.scale = Vector3(s * 1.8, s * 0.6, s * 1.7)
+# ------------------------------------------------------------------ Venice: a classic canal city — stone fondamente, palazzi, a campanile and a domed basilica
+func venice() -> void:
+	var pal := [0xc96a4a, 0xd98c4e, 0xbf5a4a, 0xd9a86a, 0xc98a66, 0xe0c090, 0xb5705a, 0xcf9a5e, 0xb84a3a, 0xd6a84e]
+	# paved stone fondamente flanking both banks, so the city stands on pavement, not sand
+	var paveT := T({"color": 0xbcb4a2, "side": "double"})
+	w.ribbon(HW + 0.1, HW + 15.0, 0.05, 6.0, paveT)
+	w.ribbon(-(HW + 15.0), -(HW + 0.1), 0.05, 6.0, paveT)
+	# palazzi crowding the canal-side in three dense rows, flat-fronted onto the water
+	var blds: Array = []
+	var bi := 4
+	while bi < t.n and blds.size() < 300:
+		if t.py[bi] <= 0.1:
+			var ang := atan2(t.tx[bi], t.tz[bi])
+			for s: float in [-1.0, 1.0]:
+				for rowi in 3:
+					var off: float = HW + 3.5 + rowi * 8.0 + R() * 1.5
+					var x: float = t.px[bi] + t.nx[bi] * off * s
+					var z: float = t.pz[bi] + t.nz[bi] * off * s
+					var dd := w.dist_to_track(x, z, 52.0)
+					var y := w.terrain_h(x, z, dd)
+					if y > -0.1 and dd > HW + 1.5 and R() < [0.95, 0.78, 0.55][rowi]:
+						blds.append({"x": x, "y": y, "z": z, "a": ang + (R() - 0.5) * 0.1, "s": R(), "r": R(), "d": dd, "pitch": R() < 0.55})
+		bi += 5
+	# plaster bodies in warm Venetian hues
+	w.inst(boxG, T(), blds, func(p, d, i):
+		var h: float = 10.0 + p.s * 16.0
+		d.position = Vector3(p.x, p.y, p.z)
 		d.rotation.y = p.a
-		return tint(pick([0xffffff, 0xf2f6ff, 0xeaf0ff, 0xfbeefc]), 0.22))
-	# towering cloud banks rising out of the sea in the mid-distance and on the horizon
-	var banks := slice(spaced(around(150, HW + 36.0, 230.0, 0.6), 30.0), 90)
-	w.inst(Geo.icosahedron(2.2, 1), cloud_mat, banks, func(p, d, i):
-		var s: float = 4.5 + p.s * 11.0
-		d.position = Vector3(p.x, p.y + 0.5 + p.r * 9.0, p.z)
-		d.scale = Vector3(s * 1.7, s * 0.85, s * 1.6)
+		d.scale = Vector3(8.5 + p.r * 6.0, h, 7.5 + p.s * 3.0)
+		if p.d < HW + 55.0:
+			w.add_obstacle(p.x, p.z, 4.5)
+		return tint(pick(pal), 0.26))
+	# pitched terracotta roofs on some, flat cornices on the rest
+	w.inst(roofG, T(), blds.filter(func(p): return p.pitch), func(p, d, i):
+		var h: float = 10.0 + p.s * 16.0
+		d.position = Vector3(p.x, p.y + h, p.z)
 		d.rotation.y = p.a
-		return tint(pick([0xffffff, 0xeef4ff, 0xf6eefc]), 0.2))
-	# the floating sky-city: rock platforms resting on a wisp of cloud, topped with pastel towers
-	var isles := slice(spaced(around(52, HW + 18.0, 150.0, 0.5), 34.0), 18)
-	var tower_pal := [0xffffff, 0xe6ecff, 0xd6ddf5, 0xc8d4f0, 0xf0e4fb]
-	for j in isles.size():
-		var p: Dictionary = isles[j]
-		var hy: float = p.y + 9.0 + p.r * 32.0
-		var g := group(p.x, hy, p.z)
-		var sc: float = 5.0 + p.s * 7.0
-		var base := mesh(Geo.cone(sc, sc * 1.9, 7).translate(0, -sc * 0.95, 0), T({"color": 0x9aa6c4}), true)
-		base.rotation.y = p.a
-		g.add_child(base)
-		g.add_child(mesh(Geo.cylinder(sc, sc * 1.02, sc * 0.34, 7), T({"color": 0xe4ecff}), true))
-		# a small skyline of towers of varying height
-		var towers := 3 + int(R() * 3.0)
-		for k in towers:
-			var th: float = sc * (0.7 + R() * 1.7)
-			var tw := mesh(boxG, T({"color": pick(tower_pal)}), true)
-			tw.scale = Vector3(sc * (0.2 + R() * 0.12), th, sc * (0.2 + R() * 0.12))
-			tw.position = Vector3((R() - 0.5) * sc * 1.1, sc * 0.17 + th * 0.5, (R() - 0.5) * sc * 1.1)
-			g.add_child(tw)
-		# a flat cloud wisp clinging under the island
-		var wisp := mesh(Geo.icosahedron(sc * 1.4, 1), T({"color": 0xf4f8ff}))
-		wisp.scale = Vector3(1.0, 0.32, 1.0)
-		wisp.position.y = -sc * 0.5
-		g.add_child(wisp)
-	# glowing sky-lanterns drifting along the route
-	var lanterns := slice(spaced(around(72, HW + 6.0, 44.0, 0.0), 15.0), 22)
-	var lan_p := PackedVector3Array()
-	var lan_c: Array = []
-	for p in lanterns:
-		lan_p.append(Vector3(p.x, p.y + 4.0 + p.r * 5.0, p.z))
-		lan_c.append(col(pick([0xfff0c0, 0xffd8ec, 0xc8e0ff, 0xbfe6ff])))
-	w.sprites(lan_p, lan_c, 3.8, {"blend": "add"})
+		d.scale = Vector3((8.5 + p.r * 6.0) * 1.03, 2.4, (7.5 + p.s * 3.0) * 1.03)
+		return tint(0xa84632, 0.2))
+	w.inst(boxG, T(), blds.filter(func(p): return not p.pitch), func(p, d, i):
+		var h: float = 10.0 + p.s * 16.0
+		d.position = Vector3(p.x, p.y + h, p.z)
+		d.rotation.y = p.a
+		d.scale = Vector3((8.5 + p.r * 6.0) * 1.05, 0.8, (7.5 + p.s * 3.0) * 1.05)
+		return tint(0x9a4430, 0.2))
+	# a band of arched windows picked out across each upper facade
+	w.inst(boxG, T({"color": 0x5e4234}), blds, func(p, d, i):
+		var h: float = 10.0 + p.s * 16.0
+		d.position = Vector3(p.x, p.y + h * 0.62, p.z)
+		d.rotation.y = p.a
+		d.scale = Vector3((8.5 + p.r * 6.0) * 1.02, h * 0.13, (7.5 + p.s * 3.0) * 1.02), false)
+	# detailed houses filling the streets behind the waterfront
+	var hl: Array = []
+	for hp in land(slice(spaced(around(150, HW + 18.0, 90.0, 0.25), 11.0), 84)):
+		hl.append(house(hp, {"wc": col(pick(pal)), "rc": col(pick([0xa84632, 0xb0613a, 0x9a4430])), "hw": 6.0 + R() * 3.0, "hd": 5.5 + R() * 2.5, "hh": 6.0 + R() * 6.0, "rh": 2.0 + R() * 1.6, "chim": R() < 0.5}))
+	houses(hl)
+	# Piazza San Marco: a domed basilica beside the brick campanile, on a paved campo
+	var plz := spaced(land(around(16, HW + 26.0, 100.0, 0.35)).filter(func(p): return p.y > 0.3), 16.0, blds, 18.0)
+	if not plz.is_empty():
+		var c: Dictionary = plz[0]
+		var g := group(c.x, c.y, c.z)
+		g.rotation.y = face(c)
+		var campo := mesh(Geo.box(42, 0.4, 32), T({"color": 0xc9bea8}))
+		campo.position = Vector3(0, 0.12, 0)
+		g.add_child(campo)
+		var body := mesh(boxG, T({"color": 0xe6d8bc}), true)
+		body.scale = Vector3(24, 11, 15)
+		body.position = Vector3(0, 0, -5)
+		g.add_child(body)
+		var facade := mesh(boxG, T({"color": 0xb4603a}), true)
+		facade.scale = Vector3(24.4, 3.2, 1.2)
+		facade.position = Vector3(0, 7.6, -12.6)
+		g.add_child(facade)
+		for dxk: float in [-8.0, 0.0, 8.0]:
+			var dome := mesh(Geo.sphere(3.4, 14, 10, 0, TAU, 0, PI / 2.0), T({"color": 0x8f9a98}), true)
+			dome.position = Vector3(dxk, 11, -5)
+			g.add_child(dome)
+			var lantern := mesh(Geo.cylinder(0.55, 0.55, 2.2, 8).translate(0, 1.1, 0), T({"color": 0xe8c874}))
+			lantern.position = Vector3(dxk, 14.3, -5)
+			g.add_child(lantern)
+		var shaft := mesh(boxG, T({"color": 0xa9492f}), true)
+		shaft.scale = Vector3(7, 44, 7)
+		shaft.position = Vector3(17, 0, 7)
+		g.add_child(shaft)
+		var bel := mesh(boxG, T({"color": 0xe4d2b4}), true)
+		bel.scale = Vector3(7.6, 7, 7.6)
+		bel.position = Vector3(17, 44, 7)
+		g.add_child(bel)
+		var spire := mesh(Geo.cone(5.6, 9, 4), T({"color": 0x3a6a5a}), true)
+		spire.rotation.y = PI / 4.0
+		spire.position = Vector3(17, 51, 7)
+		g.add_child(spire)
+		var fin := mesh(Geo.cone(0.7, 3, 6), Mats.basic({"color": 0xe8c874}))
+		fin.position = Vector3(17, 60, 7)
+		g.add_child(fin)
+		w.add_obstacle(c.x, c.z, 18.0)
+	# gondolas drifting on the lagoon and canals
+	var gmade := 0
+	var gtries := 0
+	while gmade < 12 and gtries < 400:
+		gtries += 1
+		var x := U.lerpf2(w.bounds.x0 + 20.0, w.bounds.x1 - 20.0, R())
+		var z := U.lerpf2(w.bounds.z0 + 20.0, w.bounds.z1 - 20.0, R())
+		var dd := w.dist_to_track(x, z, 110.0)
+		var y := w.terrain_h(x, z, dd)
+		if y > -0.4 or dd < HW + 4.0:
+			continue
+		gmade += 1
+		var gg := w.node()
+		var hull_g := Geo.cylinder(0.5, 0.28, 6.2, 6, 1)
+		hull_g.rotate_x(PI / 2.0)
+		hull_g.scale_xyz(1.0, 0.5, 1.0)
+		var hull := mesh(hull_g, T({"color": 0x16191e}), true)
+		hull.position.y = 0.28
+		gg.add_child(hull)
+		var ferro := mesh(Geo.box(0.12, 1.1, 0.4), T({"color": 0xcfc4a8}))
+		ferro.position = Vector3(0, 0.7, 3.0)
+		gg.add_child(ferro)
+		gg.position = Vector3(x, -0.5, z)
+		gg.rotation.y = R() * TAU
+		w.add_child(gg)
+		var ph := R() * TAU
+		w.anims.append(func(dt, tt):
+			gg.position.y = -0.5 + sin(tt * 1.4 + ph) * 0.12
+			gg.rotation.z = sin(tt * 1.1 + ph) * 0.06)
+	# bricole — mooring poles standing in the water by the road, tipped with a painted cap
+	var bri: Array = []
+	var bt := 0
+	while bri.size() < 70 and bt < 700:
+		bt += 1
+		var i := int(R() * t.n)
+		var s := -1.0 if R() < 0.5 else 1.0
+		var off := HW + 2.0 + R() * 12.0
+		var bx: float = t.px[i] + t.nx[i] * off * s
+		var bz: float = t.pz[i] + t.nz[i] * off * s
+		if w.terrain_h(bx, bz, w.dist_to_track(bx, bz, 60.0)) < -0.15:
+			bri.append({"x": bx, "z": bz})
+	w.inst(Geo.cylinder(0.16, 0.2, 3.2, 6).translate(0, 1.0, 0), T({"color": 0x6a4a30}), bri, func(p, d, i):
+		d.position = Vector3(p.x, 0.0, p.z)
+		return tint(0x6a4a30, 0.3), false)
+	var pole_top := PackedVector3Array()
+	var pole_col: Array = []
+	for p in bri:
+		pole_top.append(Vector3(p.x, 2.5, p.z))
+		pole_col.append(col(pick([0xf2ece0, 0x3a6a8a, 0xc7493a])))
+	w.sprites(pole_top, pole_col, 1.5, {"blend": "add"})
+	# warm canal lamps along the route
+	var lamps := slice(spaced(around(60, HW + 4.0, 34.0, 0.0), 14.0), 18)
+	w.inst(Geo.cylinder(0.14, 0.18, 4, 6).translate(0, 2, 0), T({"color": 0x3a3026}), lamps, func(p, d, i):
+		d.position = Vector3(p.x, p.y, p.z)
+		obst(p, 0.4))
+	var lp := PackedVector3Array()
+	for p in lamps:
+		lp.append(Vector3(p.x, p.y + 4.3, p.z))
+	w.sprites(lp, null, 2.8, {"blend": "add", "color": 0xffd98a})
 	birds(e.birds)
 
 
