@@ -125,11 +125,16 @@ static func ground(e: Dictionary) -> ImageTexture:
 		if _cache.has(key):
 			return _cache[key]
 		var img := Image.create(256, 256, false, Image.FORMAT_RGBA8)
-		img.fill(Color("#04050a"))
-		_noise_paint(img, 6.0, 2)
-		var c1 := Color(34 / 255.0, 229 / 255.0, 1.0, 0.9)    # bright cyan cell border
-		var c2 := Color(34 / 255.0, 229 / 255.0, 1.0, 0.28)   # dim inner cross
-		# 3px cell border + a 1px centre cross so the tiled floor reads as a lightgrid
+		img.fill(Color("#0a1325"))
+		_noise_paint(img, 5.0, 2)
+		var halo := Color(50 / 255.0, 188 / 255.0, 1.0, 0.12)
+		var c1 := Color(58 / 255.0, 237 / 255.0, 1.0, 0.92)
+		var c2 := Color(103 / 255.0, 116 / 255.0, 1.0, 0.32)
+		# A soft cyan halo under the cell borders keeps the distant lightgrid readable.
+		_blend(img, 0, 0, 256, 8, halo)
+		_blend(img, 0, 248, 256, 256, halo)
+		_blend(img, 0, 0, 8, 256, halo)
+		_blend(img, 248, 0, 256, 256, halo)
 		_blend(img, 0, 0, 256, 3, c1)
 		_blend(img, 0, 253, 256, 256, c1)
 		_blend(img, 0, 0, 3, 256, c1)

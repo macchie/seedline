@@ -1752,7 +1752,7 @@ func venice() -> void:
 
 # ------------------------------------------------------------------ Grid: a TRON-like neon void over a glowing lightgrid
 func grid_void() -> void:
-	var pal := [col(0x22e5ff), col(0xff6a1f), col(0xff2bd6)]
+	var pal := [col(0x35efff), col(0x9f70ff), col(0xff45dc)]
 	# glowing pylons flanking the circuit, a bright cap bar on each
 	var lamps: Array = []
 	var i := 6
@@ -1762,7 +1762,7 @@ func grid_void() -> void:
 			var o := s * (HW + 2.4)
 			lamps.append({"x": t.px[i] + t.nx[i] * o, "z": t.pz[i] + t.nz[i] * o, "c": pal[(i / 14) % pal.size()]})
 		i += 14
-	w.inst(boxG, Mats.basic({"color": 0x0e1a26}), lamps, func(p, d, i2):
+	w.inst(boxG, Mats.basic({"color": 0x172840}), lamps, func(p, d, i2):
 		d.position = Vector3(p.x, 0, p.z)
 		d.scale = Vector3(0.3, 5.0, 0.3)
 		w.add_obstacle(p.x, p.z, 0.4))
@@ -1804,7 +1804,7 @@ func grid_void() -> void:
 		w.add_child(b)
 		var jj := j
 		w.anims.append(func(dt, tt): m.set_shader_parameter("opacity", 0.3 + 0.7 * maxf(0.0, sin(tt * 3.0 - jj * 0.9))))
-	w.inst(boxG, Mats.basic({"color": 0x0e1a26}), pil, func(p, d, i2):
+	w.inst(boxG, Mats.basic({"color": 0x172840}), pil, func(p, d, i2):
 		d.position = Vector3(p.x, 0, p.z)
 		d.scale = Vector3(0.6, 9.2, 0.6)
 		w.add_obstacle(p.x, p.z, 0.6))

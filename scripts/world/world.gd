@@ -831,9 +831,12 @@ func _build_road() -> void:
 	rm.shader = Mats.shader("pbr")
 	rm.set_shader_parameter("use_tex", true)
 	rm.set_shader_parameter("tex", Tex.road(e, false))
-	rm.set_shader_parameter("roughness", 0.38 if (dark or wet) else 0.82)
-	rm.set_shader_parameter("metallic", 0.3 if dark else 0.05)
-	rm.set_shader_parameter("env_i", 0.6 if dark else 0.35)
+	var grid: bool = e.get("grid", false)
+	rm.set_shader_parameter("roughness", 0.24 if grid else (0.38 if (dark or wet) else 0.82))
+	rm.set_shader_parameter("metallic", 0.18 if grid else (0.3 if dark else 0.05))
+	rm.set_shader_parameter("env_i", 0.92 if grid else (0.6 if dark else 0.35))
+	if grid:
+		rm.set_shader_parameter("emissive", Mats.v3(U.hexc(0x091226)))
 	ribbon(-HW, HW, 0.06, 20.0, rm)
 	# kerbs on the outside of tight corners
 	var g := Geo.new()
