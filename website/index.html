@@ -6,19 +6,19 @@
     <meta name="theme-color" content="#07070e" />
     <meta
       name="description"
-      content="Seedline is a deterministic time-trial racer where every 16-character seed builds a repeatable circuit. Race it, record a best, share the code, and chase the time."
+      content="Race a fresh time-trial challenge, set a personal best, and share the track code with friends. Find your line across 16 unforgettable worlds."
     />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Seedline — one seed, one circuit" />
     <meta
       property="og:description"
-      content="A precision time-trial racer built around endlessly replayable seeded tracks across sixteen worlds."
+      content="A new circuit every run. Chase your best time, race your ghost, and challenge friends across 16 unforgettable worlds."
     />
     <meta property="og:image" content="./screenshots/race.webp" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="preload" as="image" href="./screenshots/race.webp" />
-    <title>Seedline — one seed, one circuit</title>
+    <title>Seedline — one code, one circuit</title>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -41,14 +41,13 @@
           <span></span><span></span>
         </button>
         <nav class="primary-nav" id="primary-nav" aria-label="Main navigation">
-          <a href="#features">The game</a>
+          <a href="#features">How it plays</a>
           <a href="#worlds">Worlds</a>
-          <a href="#downloads">Downloads</a>
+          <a href="#launch">Coming soon</a>
           <a href="#faq">FAQ</a>
-          <a class="nav-ghost" href="https://github.com" rel="noopener">GitHub</a>
         </nav>
-        <a class="header-cta" href="#downloads">
-          <span>Get the game</span>
+        <a class="header-cta" href="#worlds">
+          <span>Explore worlds</span>
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11m-5-5 5 5-5 5" /></svg>
         </a>
       </div>
@@ -58,22 +57,22 @@
       <section class="hero" id="top">
         <div class="hero-grid page-width">
           <div class="hero-copy">
-            <p class="eyebrow"><span class="pulse-dot"></span> Deterministic time-trial racer · Godot 4</p>
-            <h1>One seed.<br /><span>One circuit.</span></h1>
+            <p class="eyebrow"><span class="pulse-dot"></span> Arcade time-trial racing · A fresh track every run</p>
+            <h1>One code.<br /><span>One circuit.</span></h1>
             <p class="hero-lede">
-              Every 16-character code builds the same track, every time. Find the line, record a best,
-              share the seed, and let the next driver chase your ghost.
+              Every track code gives you and your friends the same course. Find the perfect line, set a
+              personal best, and see who can beat your ghost.
             </p>
             <div class="hero-actions">
-              <a class="button button-bright" href="#downloads">
-                Get the game
+              <a class="button button-bright" href="#worlds">
+                Explore the worlds
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11m-5-5 5 5-5 5" /></svg>
               </a>
-              <a class="button button-ghost" href="#features">Take a closer look <span aria-hidden="true">↓</span></a>
+              <a class="button button-ghost" href="#features">See how it plays <span aria-hidden="true">↓</span></a>
             </div>
-            <div class="seed-console" aria-label="Example 16-character track seed">
+            <div class="seed-console" aria-label="Example 16-character track code">
               <div class="seed-console-top">
-                <span class="seed-label"><span class="seed-live"></span> TRACK SEED</span>
+                <span class="seed-label"><span class="seed-live"></span> TRACK CODE</span>
                 <span class="seed-length">16 CHARACTERS</span>
               </div>
               <div class="seed-console-bottom">
@@ -87,7 +86,7 @@
                   </button>
                 </div>
               </div>
-              <p class="seed-status" id="seed-status" aria-live="polite">Same seed, same track. Every time.</p>
+              <p class="seed-status" id="seed-status" aria-live="polite">Share the code. Race the same track.</p>
             </div>
           </div>
           <figure class="hero-visual">
@@ -105,23 +104,23 @@
               <span>NEON · LAP 1 / 3</span>
             </figcaption>
             <div class="hero-stamp" aria-hidden="true">
-              <span>120</span><small>HZ PHYSICS</small>
+              <span>3</span><small>LAPS TO SET YOUR TIME</small>
             </div>
           </figure>
         </div>
         <div class="hero-bottom page-width">
-          <span>BUILT FOR THE PERFECT LINE</span>
+          <span>MADE FOR THE PERFECT LINE</span>
           <span class="hero-rule"></span>
-          <span>ONE MORE RUN IS ALWAYS ONE SEED AWAY</span>
+          <span>ONE MORE RUN IS ALWAYS ONE CODE AWAY</span>
         </div>
       </section>
 
       <section class="metrics" aria-label="Game highlights">
         <div class="page-width metrics-grid">
           <div class="metric"><strong>∞</strong><span>track combinations</span></div>
-          <div class="metric"><strong>16</strong><span>available worlds</span></div>
-          <div class="metric"><strong>120<span class="metric-unit">HZ</span></strong><span>fixed-step physics</span></div>
-          <div class="metric"><strong>10</strong><span>rival ghosts per seed</span></div>
+          <div class="metric"><strong>16</strong><span>distinct worlds</span></div>
+          <div class="metric"><strong>3</strong><span>laps per race</span></div>
+          <div class="metric"><strong>10</strong><span>rival ghosts per track</span></div>
         </div>
       </section>
 
@@ -146,15 +145,14 @@
                   alt="Seedline play screen showing a generated track, its seed code, minimap and the race button."
                   loading="lazy"
                 />
-                <span class="image-tag">01 — THE SEED</span>
+                <span class="image-tag">01 — THE TRACK CODE</span>
               </div>
               <div class="feature-copy">
-                <span class="feature-index">01 / TRACK GENERATION</span>
+                <span class="feature-index">01 / THE TRACK CODE</span>
                 <h3>Your next favorite track is a code away.</h3>
                 <p>
-                  Roll a fresh 16-character seed or paste one from a friend. The same code always
-                  rebuilds the same route — bends, checkpoints, scenery and boost pads — for a fair
-                  head-to-head.
+                  Pick up a track code or roll a new one. Every driver gets the same route, scenery,
+                  and pickups, so every rematch is fair.
                 </p>
               </div>
             </article>
@@ -191,8 +189,8 @@
                 <span class="feature-index">03 / SAVED &amp; RECENT</span>
                 <h3>Keep every circuit worth a rematch.</h3>
                 <p>
-                  Save standout seeds and revisit the ones you just raced. Each tile carries its
-                  minimap, seed and personal best, ready to run back in a tap.
+                  Save standout tracks and revisit the ones you just raced. Each tile carries its
+                  minimap, track code and personal best, ready to run back in a tap.
                 </p>
               </div>
             </article>
@@ -207,9 +205,9 @@
             <h2>No two seeds<br />take the same road.</h2>
           </div>
           <p class="section-intro">
-            Sixteen hand-tuned worlds — from classic city skylines and neon streets to vaporwave
-            deserts, vaulted crystal caverns, a ringed-planet orbital habitat and a TRON-like lightgrid — each with their own
-            terrain, weather, light and scenery.
+            Sixteen unforgettable worlds, from rain-soaked city streets and neon skylines to crystal
+            caverns, volcanic roads, and an orbital circuit. Every setting brings its own atmosphere,
+            scenery, and reasons to run it back.
           </p>
         </div>
 
@@ -289,9 +287,8 @@
             <p class="eyebrow"><span class="eyebrow-line"></span> THE CHASE IS PERSONAL</p>
             <h2>Every lap<br />leaves a <span>ghost.</span></h2>
             <p>
-              Race your recorded best — played back through the real physics and boost logic — then
-              take on the fastest ghosts from other drivers on that same seed. Your next rival might
-              be you, one corner ago.
+              Race your recorded best, then line up against the fastest runs shared by other drivers on
+              the same track. Your next rival might be you, one corner ago.
             </p>
             <div class="race-points">
               <div><span>01</span><b>Recorded best-run replays</b></div>
@@ -310,73 +307,34 @@
         </div>
       </section>
 
-      <section class="downloads-section" id="downloads">
+      <section class="launch-section" id="launch">
         <div class="page-width">
-          <div class="downloads-heading">
-            <div>
-              <p class="eyebrow eyebrow-dark">Pick your grid</p>
-              <h2>Your platform.<br /><span>Your next run.</span></h2>
+          <div class="launch-card">
+            <div class="launch-copy">
+              <p class="eyebrow"><span class="eyebrow-line"></span> YOUR NEXT RUN IS ON THE WAY</p>
+              <h2>Find your next<br /><span>favorite circuit.</span></h2>
+              <p>
+                Seedline is coming soon. Explore the worlds, pick a favorite, and check back here for
+                launch news.
+              </p>
+              <div class="launch-actions">
+                <a class="button button-bright" href="#worlds">
+                  Explore the worlds
+                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11m-5-5 5 5-5 5" /></svg>
+                </a>
+                <a class="button button-ghost" href="#faq">First laps, answered <span aria-hidden="true">↓</span></a>
+              </div>
+              <p class="launch-status"><span class="pulse-dot"></span> RELEASE DETAILS COMING SOON</p>
             </div>
-            <p class="section-intro">
-              Seedline is built for desktop, mobile and the browser. Release builds are not published
-              yet; this is where each official download will land.
-            </p>
+            <figure class="launch-visual">
+              <img
+                src="./screenshots/race.webp"
+                alt="A race through Seedline's neon city, with a rival ghost on the course."
+                loading="lazy"
+              />
+              <figcaption class="launch-image-label">YOUR NEXT RECORD IS WAITING</figcaption>
+            </figure>
           </div>
-          <div class="platform-grid">
-            <article class="platform-card">
-              <div class="platform-icon" aria-hidden="true">
-                <svg viewBox="0 0 32 32"><path d="M5 7.5 14 6v9H5v-7.5Zm11-1.8L27 4v11H16V5.7ZM5 17h9v9l-9-1.5V17Zm11 0h11v11l-11-1.8V17Z" /></svg>
-              </div>
-              <div class="platform-content"><h3>Windows</h3><p>Desktop · x64</p></div>
-              <span class="platform-status">COMING SOON</span>
-              <button type="button" disabled>Build not published</button>
-            </article>
-            <article class="platform-card">
-              <div class="platform-icon platform-icon-apple" aria-hidden="true">
-                <svg viewBox="0 0 32 32"><path d="M21.1 16.7c0-3 2.5-4.4 2.6-4.5a5.7 5.7 0 0 0-4.5-2.4c-1.9-.2-3.6 1.1-4.6 1.1s-2.4-1.1-4-1.1a6 6 0 0 0-5.1 3.1c-2.2 3.7-.6 9.1 1.6 12.1 1.1 1.5 2.3 3.1 3.9 3 1.5-.1 2.1-1 4-1s2.5 1 4 1 2.7-1.5 3.7-3.1a13.3 13.3 0 0 0 1.7-3.5 5.3 5.3 0 0 1-3.3-4.7ZM18 7.8a5.2 5.2 0 0 0 1.2-3.8 5.3 5.3 0 0 0-3.5 1.8 4.9 4.9 0 0 0-1.2 3.7A4.4 4.4 0 0 0 18 7.8Z" /></svg>
-              </div>
-              <div class="platform-content"><h3>macOS</h3><p>Universal · desktop</p></div>
-              <span class="platform-status">COMING SOON</span>
-              <button type="button" disabled>Build not published</button>
-            </article>
-            <article class="platform-card">
-              <div class="platform-icon" aria-hidden="true">
-                <svg viewBox="0 0 32 32"><path d="M16 4 4.5 25h23L16 4Zm0 5.2 8.2 15H7.8L16 9.2Zm-1.2 4.3v6.2h2.4v-6.2h-2.4Zm0 8v2h2.4v-2h-2.4Z" /></svg>
-              </div>
-              <div class="platform-content"><h3>Linux</h3><p>64-bit desktop</p></div>
-              <span class="platform-status">COMING SOON</span>
-              <button type="button" disabled>Build not published</button>
-            </article>
-            <article class="platform-card">
-              <div class="platform-icon" aria-hidden="true">
-                <svg viewBox="0 0 32 32"><rect x="7" y="3.5" width="18" height="25" rx="3" /><path d="M12 7h8m-5 17h2" /></svg>
-              </div>
-              <div class="platform-content"><h3>Android</h3><p>Touch-ready controls</p></div>
-              <span class="platform-status">COMING SOON</span>
-              <button type="button" disabled>Build not published</button>
-            </article>
-            <article class="platform-card">
-              <div class="platform-icon platform-icon-apple" aria-hidden="true">
-                <svg viewBox="0 0 32 32"><rect x="5" y="4" width="22" height="24" rx="4" /><path d="M13 24h6m-3-17v.1" /></svg>
-              </div>
-              <div class="platform-content"><h3>iPhone + iPad</h3><p>iOS · touch-ready</p></div>
-              <span class="platform-status">COMING SOON</span>
-              <button type="button" disabled>Build not published</button>
-            </article>
-            <article class="platform-card platform-card-web">
-              <div class="platform-icon" aria-hidden="true">
-                <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11.5" /><path d="M4.8 16h22.4M16 4.5c3 3 4.5 6.8 4.5 11.5S19 24.5 16 27.5C13 24.5 11.5 20.7 11.5 16S13 7.5 16 4.5Z" /></svg>
-              </div>
-              <div class="platform-content"><h3>Web browser</h3><p>WebGL 2 · no install</p></div>
-              <span class="platform-status">COMING SOON</span>
-              <button type="button" disabled>Build not published</button>
-            </article>
-          </div>
-          <p class="download-note">
-            <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5" /><path d="M10 9v4m0-6h.01" /></svg>
-            We’ll publish direct, verified downloads here when release builds are ready. In the
-            meantime, the project is open source — build it yourself with Godot 4.7.
-          </p>
         </div>
       </section>
 
@@ -385,21 +343,21 @@
           <div class="faq-intro">
             <p class="eyebrow"><span class="eyebrow-line"></span> QUICK FAQ</p>
             <h2>Good to<br />know.</h2>
-            <p>Got a question we missed? The game is still taking shape — check back as new builds arrive.</p>
+            <p>A few quick answers before your first lap.</p>
           </div>
           <div class="faq-list">
             <details>
-              <summary>How do track seeds work?<span aria-hidden="true"></span></summary>
+              <summary>How do track codes work?<span aria-hidden="true"></span></summary>
               <p>
-                A seed is a 16-character code used to generate a track. The same code always recreates
-                the same layout, scenery and pickups, so you can share a circuit and compare runs fairly.
+                Each 16-character code creates a unique circuit. Share it so friends can race the same
+                corners, find their line, and compare times.
               </p>
             </details>
             <details>
               <summary>Can I play offline?<span aria-hidden="true"></span></summary>
               <p>
-                Yes. Racing, saved tracks and personal bests all work offline. Online leaderboards and
-                rival ghosts need a connection; finished runs queue for upload when you’re back online.
+                Your races, saved tracks, and personal bests are ready offline. Connect when you want to
+                compare leaderboard times or race recorded rivals.
               </p>
             </details>
             <details>
@@ -410,11 +368,8 @@
               </p>
             </details>
             <details>
-              <summary>Is it open source?<span aria-hidden="true"></span></summary>
-              <p>
-                Yes. Seedline is built in GDScript on Godot 4.7 with a Nakama backend for online
-                services. You can clone the repository and run it locally today.
-              </p>
+              <summary>When can I play?<span aria-hidden="true"></span></summary>
+              <p>Launch and availability details will be shared here. Check back soon for the starting line.</p>
             </details>
             <details>
               <summary>What does “rival ghost” mean?<span aria-hidden="true"></span></summary>
@@ -442,7 +397,7 @@
       <div class="page-width footer-bottom">
         <span>© <span id="year"></span> SEEDLINE</span>
         <span>BUILT FOR ONE MORE RUN</span>
-        <span>GODOT · 120 HZ · SEED-DRIVEN</span>
+        <span>SAME CODE · SAME CIRCUIT · ONE MORE RUN</span>
       </div>
     </footer>
 
