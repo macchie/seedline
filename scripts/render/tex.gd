@@ -139,6 +139,28 @@ static func ground(e: Dictionary) -> ImageTexture:
 		var t := _to_tex(img)
 		_cache[key] = t
 		return t
+	if e.get("space", false):
+		var key := "ground_orbital"
+		if _cache.has(key):
+			return _cache[key]
+		var img := Image.create(256, 256, false, Image.FORMAT_RGBA8)
+		img.fill(Color("#111b2a"))
+		_noise_paint(img, 9.0, 19)
+		var seam := Color("#25384d")
+		var inlay := Color("#182b40")
+		_blend(img, 0, 0, 256, 2, seam)
+		_blend(img, 0, 254, 256, 256, seam)
+		_blend(img, 0, 0, 2, 256, seam)
+		_blend(img, 254, 0, 256, 256, seam)
+		_blend(img, 8, 8, 248, 10, inlay)
+		_blend(img, 8, 246, 248, 248, inlay)
+		_blend(img, 8, 10, 10, 246, inlay)
+		_blend(img, 246, 10, 248, 246, inlay)
+		_blend(img, 127, 10, 129, 246, Color("#172639"))
+		_blend(img, 10, 127, 246, 129, Color("#172639"))
+		var t := _to_tex(img)
+		_cache[key] = t
+		return t
 	if e.get("night", false):
 		var key := "ground_night"
 		if _cache.has(key):
@@ -166,6 +188,39 @@ static func ground(e: Dictionary) -> ImageTexture:
 	var t2 := _to_tex(img2)
 	_cache["ground"] = t2
 	return t2
+
+
+static func orbital_planet() -> ImageTexture:
+	if _cache.has("orbital_planet"):
+		return _cache["orbital_planet"]
+	var width := 256
+	var height := 128
+	var img := Image.create(width, height, false, Image.FORMAT_RGBA8)
+	var bands := [
+		[0.0, 0.16, Color("#b8919a")],
+		[0.16, 0.24, Color("#d4b2a3")],
+		[0.24, 0.43, Color("#755f82")],
+		[0.43, 0.51, Color("#d39b83")],
+		[0.51, 0.73, Color("#8c718f")],
+		[0.73, 0.8, Color("#d5b39a")],
+		[0.8, 1.0, Color("#655a7d")],
+	]
+	for y in height:
+		var v := float(y) / height
+		var base := Color("#755f82")
+		for band in bands:
+			if v >= band[0] and v < band[1]:
+				base = band[2]
+				break
+		for x in width:
+			var wave := sin(float(x) * 0.075 + sin(v * 18.0) * 2.0) * 0.035
+			var storm := exp(-pow((float(x) - 176.0) / 17.0, 2.0) - pow((float(y) - 70.0) / 6.0, 2.0)) * 0.28
+			var color := base.lightened(wave + storm)
+			img.set_pixel(x, y, color)
+	_noise_paint(img, 12.0, 31)
+	var texture := _to_tex(img)
+	_cache["orbital_planet"] = texture
+	return texture
 
 
 static func checker() -> ImageTexture:

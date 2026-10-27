@@ -342,7 +342,7 @@ func load_track(seed_str: String, env_key = null) -> void:
 	var p = parse_seed(seed_str)
 	if p == null:
 		return
-	if env_key != null and Envs.DATA.has(env_key):
+	if env_key != null and Envs.KEYS.has(env_key):
 		p.env = env_key
 	if rival_ghost_fleet != null:
 		rival_ghost_fleet.set_ghosts([])
@@ -393,9 +393,14 @@ func build_world() -> void:
 	sun.transform = Transform3D(Basis.looking_at(-dir, Vector3.UP if absf(dir.y) < 0.99 else Vector3.FORWARD), Vector3.ZERO)
 	# painted sky used as the environment map of the car and road (setSky)
 	var top := U.hexc(0x0a1030 if dark else e.fog).lerp(U.hexc(0x1a2350 if dark else 0x6aa8e8), 0.4 if dark else 0.45)
+	var horizon := U.hexc(e.fog)
 	var gnd := U.hexc(e.gLow) * (0.25 if dark else 0.7)
+	if e.get("space", false):
+		top = U.hexc(0x02050e)
+		horizon = U.hexc(0x101d36)
+		gnd = U.hexc(0x040811)
 	RenderingServer.global_shader_parameter_set("g_sky_top", Mats.v3(top))
-	RenderingServer.global_shader_parameter_set("g_sky_hor", Mats.v3(U.hexc(e.fog)))
+	RenderingServer.global_shader_parameter_set("g_sky_hor", Mats.v3(horizon))
 	RenderingServer.global_shader_parameter_set("g_sky_gnd", Mats.v3(gnd))
 	grade_mat.set_shader_parameter("bloom_th", 0.78 if dark else 0.95)
 	grade_mat.set_shader_parameter("bloom", 0.42 if dark else 0.24)

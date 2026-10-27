@@ -586,6 +586,8 @@ func build() -> void:
 			nocturne()
 		"DUSKMESA":
 			dusk_mesa()
+		"ORBITAL":
+			orbital_habitat()
 		"VENICE":
 			venice()
 		"GRID":
@@ -1820,3 +1822,107 @@ func grid_void() -> void:
 		w.add_child(wm)
 		var spd: float = 0.1 + p.s * 0.25
 		w.anims.append(func(dt, tt): wm.rotation.y += dt * spd)
+
+
+func orbital_habitat() -> void:
+	var B: Dictionary = w.bounds
+	var star_pos := PackedVector3Array()
+	var star_col: Array = []
+	for i in 560:
+		star_pos.append(Vector3(
+			U.lerpf2(B.x0 - 240.0, B.x1 + 240.0, R()),
+			36.0 + R() * 260.0,
+			U.lerpf2(B.z0 - 240.0, B.z1 + 240.0, R())))
+		var c: Color = col(pick([0xa9d9ff, 0x74cfff, 0xffd6a0, 0xe9efff]))
+		var intensity := 0.28 + R() * 0.72
+		c = Color(c.r * intensity, c.g * intensity, c.b * intensity)
+		star_col.append(c)
+	w.sprites(star_pos, star_col, 1.8, {"blend": "add", "fog": false, "opacity": 0.9})
+
+	# A banded planet and its thin rings give the track a fixed celestial landmark.
+	var planet_pos := Vector3(B.cx + 230.0, 178.0, B.cz - 260.0)
+	var planet := mesh(Geo.sphere(1.0, 36, 24), T({"map": Tex.orbital_planet()}))
+	w.add_child(planet)
+	planet.position = planet_pos
+	planet.scale = Vector3.ONE * 76.0
+	planet.rotation = Vector3(0.18, 0.0, -0.22)
+	var halo := mesh(Geo.sphere(1.0, 32, 20), Mats.basic({"color": 0x7dbfff, "opacity": 0.16, "blend": "add", "fog": false}))
+	w.add_child(halo)
+	halo.position = planet_pos
+	halo.scale = Vector3.ONE * 81.0
+	var ring := mesh(Geo.torus(1.0, 0.008, 10, 128), Mats.basic({"color": 0xe4c3a0, "opacity": 0.72, "blend": "add", "fog": false}))
+	w.add_child(ring)
+	ring.position = planet_pos
+	ring.scale = Vector3(98.0, 91.0, 98.0)
+	ring.rotation = Vector3(1.2, 0.0, -0.22)
+	w.anims.append(func(dt, tt):
+		planet.rotation.y += dt * 0.012
+		halo.rotation.y += dt * 0.012
+		ring.rotation.y += dt * 0.012)
+	var moon := mesh(Geo.sphere(1.0, 24, 16), T({"color": 0x8daec5}))
+	w.add_child(moon)
+	moon.position = Vector3(B.cx - 260.0, 105.0, B.cz + 210.0)
+	moon.scale = Vector3.ONE * 24.0
+
+	var stations := slice(spaced(around(22, HW + 58.0, 175.0, 0.4), 35.0), 12)
+	var hull := T({"color": 0x9eafbf})
+	var trim := Mats.basic({"color": 0x69dcff, "blend": "add", "opacity": 0.8, "fog": false})
+	var solar := Mats.basic({"color": 0x18385d, "fog": false})
+	var solar_line := Mats.basic({"color": 0x4abde7, "blend": "add", "opacity": 0.72, "fog": false})
+	for i in stations.size():
+		var p: Dictionary = stations[i]
+		var station := group(p.x, p.y + 38.0 + p.s * 22.0, p.z)
+		station.rotation.y = p.a
+		var core_geo := Geo.cylinder(2.2, 3.2, 12.0, 12).rotate_x(PI / 2.0)
+		var core := mesh(core_geo, hull)
+		station.add_child(core)
+		var nose := mesh(Geo.sphere(2.5, 12, 8), T({"color": 0x60788e}))
+		nose.position.z = 6.0
+		station.add_child(nose)
+		var window := mesh(Geo.box(5.2, 1.1, 0.18), trim)
+		window.position = Vector3(0, 1.5, 6.1)
+		station.add_child(window)
+
+		var habitat_ring := mesh(Geo.torus(8.8, 0.55, 12, 48), hull)
+		habitat_ring.rotation = Vector3(1.18, 0.0, 0.08)
+		habitat_ring.position.z = -1.0
+		station.add_child(habitat_ring)
+		var ring_light := mesh(Geo.torus(8.8, 0.12, 8, 48), trim)
+		ring_light.rotation = habitat_ring.rotation
+		ring_light.position = habitat_ring.position
+		station.add_child(ring_light)
+
+		for side in [-1.0, 1.0]:
+			var mast := mesh(Geo.box(0.55, 0.55, 16.0), hull)
+			mast.position.x = side * 14.0
+			station.add_child(mast)
+			var panel := mesh(Geo.box(11.0, 8.0, 0.28), solar)
+			panel.position = Vector3(side * 20.0, 0.0, -1.0)
+			station.add_child(panel)
+			for row in [-1.0, 1.0]:
+				var bar := mesh(Geo.box(10.6, 0.12, 0.08), solar_line)
+				bar.position = Vector3(side * 20.0, row * 2.55, -0.78)
+				station.add_child(bar)
+			var edge := mesh(Geo.box(0.13, 8.0, 0.1), solar_line)
+			edge.position = Vector3(side * 20.0, 0.0, -0.78)
+			station.add_child(edge)
+
+		var beacon := mesh(Geo.sphere(0.5, 8, 6), Mats.basic({"color": 0xffc982, "blend": "add", "fog": false}))
+		beacon.position = Vector3(0, 3.2, 6.3)
+		station.add_child(beacon)
+
+	# Small illuminated navigation buoys break up the dark deck without crowding the racing line.
+	var markers: Array = []
+	var i := 10
+	while i < t.n:
+		var side := 1.0 if (i / 18) % 2 == 0 else -1.0
+		var offset := side * (HW + 3.6)
+		markers.append({"x": t.px[i] + t.nx[i] * offset, "z": t.pz[i] + t.nz[i] * offset})
+		i += 18
+	var posts := Mats.toon({"color": 0x263b50})
+	w.inst(Geo.cylinder(0.16, 0.22, 4.8, 8).translate(0, 2.4, 0), posts, markers, func(p, d, i):
+		d.position = Vector3(p.x, 0, p.z))
+	var beacons := PackedVector3Array()
+	for p in markers:
+		beacons.append(Vector3(p.x, 5.0, p.z))
+	w.sprites(beacons, null, 3.5, {"blend": "add", "color": 0x64dfff, "opacity": 0.78})

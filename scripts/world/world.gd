@@ -857,9 +857,12 @@ func _build_road() -> void:
 		g.compute_normals()
 		add_child(mesh_node(g.to_mesh(), Mats.toon({"side": "double"})))
 	if e.get("night", false):
-		ribbon(-HW + 0.25, -HW + 0.7, 0.08, 10.0, Mats.basic({"color": 0x22e5ff, "blend": "add"}))
-		ribbon(HW - 0.7, HW - 0.25, 0.08, 10.0, Mats.basic({"color": 0xff2bd6, "blend": "add"}))
-		ribbon(-HW - 5.0, HW + 5.0, 0.035, 10.0, Mats.basic({"color": 0x5a26a0, "opacity": 0.3, "blend": "add"}))
+		var left_glow: int = 0x72dfff if e.get("space", false) else 0x22e5ff
+		var right_glow: int = 0xffc982 if e.get("space", false) else 0xff2bd6
+		var center_glow: int = 0x274c70 if e.get("space", false) else 0x5a26a0
+		ribbon(-HW + 0.25, -HW + 0.7, 0.08, 10.0, Mats.basic({"color": left_glow, "blend": "add"}))
+		ribbon(HW - 0.7, HW - 0.25, 0.08, 10.0, Mats.basic({"color": right_glow, "blend": "add"}))
+		ribbon(-HW - 5.0, HW + 5.0, 0.035, 10.0, Mats.basic({"color": center_glow, "opacity": 0.3, "blend": "add"}))
 
 
 func _build_start() -> void:
@@ -1193,8 +1196,8 @@ func _build_common() -> void:
 		d.position = Vector3(p.x, 0, p.z)
 		d.rotation.y = p.a + PI / 2.0
 		return acc if i % 2 == 1 else cb, false)
-	# after dark every place gets trackside lamps (Neon and Old Town have their own)
-	if dark and t.env_key != "NEON" and t.env_key != "TOWN" and t.env_key != "GRID":
+	# After-dark worlds get trackside lamps unless they provide their own.
+	if dark and t.env_key != "NEON" and t.env_key != "TOWN" and t.env_key != "GRID" and t.env_key != "ORBITAL":
 		var lamps: Array = []
 		var i := 8
 		while i < t.n:

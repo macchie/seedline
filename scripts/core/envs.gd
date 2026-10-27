@@ -1,9 +1,9 @@
 class_name Envs
-## The sixteen worlds. Colours are 0xRRGGBB display values.
+## World data. Colours are 0xRRGGBB display values; only keys in KEYS are currently enabled.
 
 const NIGHT_ENABLED := false  # night mode is built but switched off for now
 
-const KEYS := ["CANYON", "ALPINE", "NEON", "GROVE", "ISLAND", "COUNTRY", "VOLCANO", "GREECE", "TOWN", "WETLANDS", "HARBOR", "SALTFLATS", "NOCTURNE", "DUSKMESA", "VENICE", "GRID"]
+const KEYS := ["CANYON", "ALPINE", "NEON", "GROVE", "ISLAND", "VOLCANO", "TOWN", "WETLANDS", "HARBOR", "SALTFLATS", "NOCTURNE", "DUSKMESA", "GRID", "ORBITAL"]
 
 const DATA := {
 	"CANYON": {"name": "Canyon", "accent": "#ff9a3c", "onAccent": "#160b02", "fog": 0xe8ad7c, "fogNear": 130.0, "fogFar": 380.0, "hemiS": 0xffe0bd, "hemiG": 0x8a4a2a, "hemiI": 0.85, "sun": 0xffe6c4, "sunI": 1.2, "sunDir": [-0.8, 1.0, 0.55],
@@ -70,6 +70,10 @@ const DATA := {
 		"gLow": 0x05060e, "gHigh": 0x070a16, "shoulder": 0x0a1018, "road": "#0a0f1a", "edge": "rgba(34,229,255,.95)", "dash": "rgba(255,106,31,.85)", "curbA": 0x22e5ff, "curbB": 0xff6a1f,
 		"amp": 0.0, "night": true, "grid": true, "lights": 1.0, "weather": "none", "grip": 1.0, "smoke": 0x3a6a8a, "grade": {"tint": [0.98, 1.0, 1.12], "sat": 1.3, "cloud": 0.0, "vig": 0.6},
 		"words": [["Vector", "Cyan", "Lightcycle", "Zero", "Binary", "Neon", "Circuit", "Null"], ["Grid", "Sector", "Node", "Array", "Runtime", "Loop", "Vector", "Void"]]},
+	"ORBITAL": {"name": "Orbital Habitat", "accent": "#72dfff", "onAccent": "#061521", "fog": 0x0b172b, "fogNear": 180.0, "fogFar": 640.0, "hemiS": 0x9fc8f5, "hemiG": 0x18263a, "hemiI": 0.72, "sun": 0xffd6a0, "sunI": 1.1, "sunDir": [-0.35, 0.8, 0.45],
+		"gLow": 0x09111f, "gHigh": 0x14233a, "shoulder": 0x26374a, "road": "#111b2b", "edge": "rgba(105,225,255,.95)", "dash": "rgba(255,197,122,.88)", "curbA": 0x54d9ff, "curbB": 0x1b2b40,
+		"amp": 0.0, "night": true, "space": true, "weather": "none", "grip": 1.0, "smoke": 0x80caff, "lights": 0.8, "grade": {"tint": [0.9, 0.98, 1.12], "sat": 1.12, "cloud": 0.0, "vig": 0.26},
+		"words": [["Kepler", "Aster", "Lagrange", "Zenith", "Europa", "Starlight", "Apogee", "Vega"], ["Habitat", "Array", "Dock", "Transit", "Ring", "Station", "Passage", "Orbit"]]},
 }
 
 

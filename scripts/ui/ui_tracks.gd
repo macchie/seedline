@@ -66,7 +66,7 @@ func _grid() -> GridContainer:
 
 ## One track tile (minimap + name + seed) for the saved / recent grids; tapping opens the action dialog.
 func _tile(seed_s: String, env_s: String, title: String, show_remove: bool) -> Dictionary:
-	if not Envs.DATA.has(env_s):
+	if not Envs.KEYS.has(env_s):
 		var parsed = ui.game.parse_seed(seed_s)
 		if parsed != null:
 			env_s = str(parsed.env)
@@ -211,7 +211,7 @@ func build_action_modal() -> void:
 func show_action(seed_s: String, env_s: String, title: String, is_fav: bool) -> void:
 	if track_action_modal == null:
 		return
-	if not Envs.DATA.has(env_s):
+	if not Envs.KEYS.has(env_s):
 		var parsed = ui.game.parse_seed(seed_s)
 		if parsed != null:
 			env_s = str(parsed.env)

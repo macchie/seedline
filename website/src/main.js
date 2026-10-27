@@ -80,8 +80,9 @@ if (envTiles.length) {
   const esc = (s) => s.replace(/"/g, "&quot;");
   const slides = envTiles.map((tile) => {
     const img = tile.querySelector("img");
+    const source = img.currentSrc || img.src;
     return {
-      full: img.currentSrc || img.src,
+      full: source.replace("/env/", "/env-full/"),
       alt: img.alt,
       name: tile.querySelector(".env-name")?.textContent ?? "",
       tag: tile.querySelector(".env-tag")?.textContent ?? "",
