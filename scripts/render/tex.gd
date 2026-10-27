@@ -120,6 +120,21 @@ static func road(e: Dictionary, encode: bool) -> ImageTexture:
 
 
 static func ground(e: Dictionary) -> ImageTexture:
+	if e.get("crystal", false):
+		var key := "ground_crystal"
+		if _cache.has(key):
+			return _cache[key]
+		var img := Image.create(256, 256, false, Image.FORMAT_RGBA8)
+		img.fill(Color("#273044"))
+		_noise_paint(img, 20.0, 37)
+		for x in 256:
+			var seam_y := int(38.0 + float(x) * 0.22 + sin(float(x) * 0.06) * 5.0)
+			for dy in 2:
+				var c := img.get_pixel(x, seam_y + dy)
+				img.set_pixel(x, seam_y + dy, c.lerp(Color("#63718d"), 0.16))
+		var t := _to_tex(img)
+		_cache[key] = t
+		return t
 	if e.get("grid", false):
 		var key := "ground_grid"
 		if _cache.has(key):

@@ -590,6 +590,8 @@ func build() -> void:
 			dusk_mesa()
 		"ORBITAL":
 			orbital_habitat()
+		"CRYSTAL":
+			crystal_caverns()
 		"VENICE":
 			venice()
 		"GRID":
@@ -2120,3 +2122,123 @@ func orbital_habitat() -> void:
 	for p in markers:
 		beacons.append(Vector3(p.x, 5.0, p.z))
 	w.sprites(beacons, null, 3.5, {"blend": "add", "color": 0x64dfff, "opacity": 0.78})
+
+
+# ------------------------------------------------------------------ Crystal Caverns: a mineral-lit subterranean vault
+func crystal_caverns() -> void:
+	var B: Dictionary = w.bounds
+	var arches: Array = []
+	var ai := 24
+	while ai < t.n - 24:
+		if t.py[ai] < 3.0 and absf(t.k[ai]) < 0.035 and w.other_road_dist(t.px[ai], t.pz[ai], ai) > HW * 2.0 + 8.0:
+			arches.append({
+				"x": t.px[ai],
+				"z": t.pz[ai],
+				"rot": atan2(t.tx[ai], t.tz[ai]),
+			})
+		ai += 30
+	var rib := Geo.torus(1.0, 0.018, 8, 40)
+	w.inst(rib, T({"color": 0x465269, "emissive": 0x54698b, "emissive_i": 0.16}), arches, func(p, d, i):
+		d.position = Vector3(p.x, -1.0, p.z)
+		d.rotation.y = p.rot
+		d.scale = Vector3(48.0, 64.0, 1.0), false)
+
+	var rock_fields := land(around(310, HW + 8.0, 92.0, 0.18))
+	rocks(rock_fields, 0x414c63, 0.8)
+	var stone_spikes := land(around(180, HW + 8.0, 82.0, 0.1))
+	var stone_geo := Geo.cone(1.0, 1.0, 6).translate(0.0, 0.5, 0.0)
+	w.inst(stone_geo, T({"color": 0x394258}), stone_spikes, func(p, d, i):
+		var h: float = 6.0 + p.s * 20.0
+		var width: float = 2.0 + p.r * 4.0
+		d.position = Vector3(p.x, p.y, p.z)
+		d.scale = Vector3(width, h, width)
+		d.rotation.y = p.a
+		obst(p, width * 0.42), false)
+
+	var palette := [0x50b4ca, 0x7094d4, 0xa179d6, 0x83cdbd, 0xc99662]
+	var shard_groups: Array = [[], [], [], [], []]
+	var clusters: Array = []
+	var ci := 6
+	while ci < t.n:
+		if t.py[ci] < 4.0:
+			var side := -1.0 if (ci / 6) % 2 == 0 else 1.0
+			var offset := HW + 13.0 + R() * 18.0
+			var x := t.px[ci] + t.nx[ci] * offset * side
+			var z := t.pz[ci] + t.nz[ci] * offset * side
+			if w.other_road_dist(x, z, ci) > HW * 2.0 + 5.0:
+				clusters.append({
+					"x": x,
+					"y": w.terrain_h(x, z, offset),
+					"z": z,
+					"d": offset,
+					"r": R(),
+					"s": R(),
+					"a": R() * TAU,
+				})
+		ci += 6
+	var glow_pos := PackedVector3Array()
+	var glow_col: Array = []
+	var glow_pools: Array = []
+	for p: Dictionary in clusters:
+		var count := 3 + int(R() * 3.0)
+		for j in count:
+			var angle := R() * TAU
+			var radius := 0.7 + R() * 3.8
+			var height := (15.0 + R() * 19.0) if j == 0 else (7.0 + R() * 15.0)
+			var width := 1.4 + R() * 3.2
+			var group_i := int(R() * palette.size())
+			var shard: Dictionary = {
+				"x": p.x + cos(angle) * radius,
+				"y": p.y,
+				"z": p.z + sin(angle) * radius,
+				"height": height,
+				"width": width,
+				"rot": angle,
+			}
+			var shard_list: Array = shard_groups[group_i]
+			shard_list.append(shard)
+		var glow_i := int(R() * palette.size())
+		glow_pos.append(Vector3(p.x, p.y + 5.0, p.z))
+		glow_col.append(col(palette[glow_i]))
+		glow_pools.append({"x": p.x, "y": p.y, "z": p.z, "c": col(palette[glow_i])})
+		obst(p, 1.8)
+
+	var crystal_geo := Geo.cone(1.0, 1.0, 6)
+	for i in palette.size():
+		var crystal_mat := T({"color": palette[i], "emissive": palette[i], "emissive_i": 0.24})
+		var crystal_list: Array = shard_groups[i]
+		w.inst(crystal_geo, crystal_mat, crystal_list, func(p, d, j):
+			d.position = Vector3(p.x, p.y + p.height * 0.5, p.z)
+			d.scale = Vector3(p.width, p.height, p.width)
+			d.rotation.y = p.rot
+			return tint(palette[i], 0.35), false)
+		var phase := float(i) * 1.7
+		w.anims.append(func(dt, tt):
+			crystal_mat.set_shader_parameter("emissive_i", 0.2 + 0.08 * sin(tt * 1.1 + phase)))
+	w.sprites(glow_pos, glow_col, 4.8, {"blend": "add", "opacity": 0.54})
+	var pool_geo := Geo.plane(11.0, 11.0)
+	pool_geo.rotate_x(-PI / 2.0)
+	w.inst(pool_geo, Mats.basic({"map": Tex.radial(), "opacity": 0.16, "blend": "add"}), glow_pools, func(p, d, i):
+		d.position = Vector3(p.x, p.y + 0.06, p.z)
+		d.scalar(0.7 + R() * 0.55)
+		return p.c, false)
+
+	var hanging := around(120, HW + 12.0, 120.0, 0.25)
+	var down_geo := Geo.cone(1.0, 1.0, 6).rotate_z(PI)
+	w.inst(down_geo, T({"color": 0x303a50}), hanging, func(p, d, i):
+		var h: float = 10.0 + p.s * 21.0
+		var top: float = 38.0 + p.r * 18.0
+		var width: float = 1.4 + p.r * 2.4
+		d.position = Vector3(p.x, top - h * 0.5, p.z)
+		d.scale = Vector3(width, h, width)
+		d.rotation.y = p.a, false)
+
+	var motes := PackedVector3Array()
+	var mote_cols: Array = []
+	for i in 160:
+		motes.append(Vector3(
+			U.lerpf2(B.x0, B.x1, R()),
+			4.0 + R() * 33.0,
+			U.lerpf2(B.z0, B.z1, R())))
+		mote_cols.append(col(pick([0x64cce8, 0x8c88e7, 0xb6a5ff, 0x84e7d0])))
+	w.sprites(motes, mote_cols, 1.6, {"blend": "add", "opacity": 0.4})

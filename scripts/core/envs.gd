@@ -3,7 +3,7 @@ class_name Envs
 
 const NIGHT_ENABLED := false  # night mode is built but switched off for now
 
-const KEYS := ["CANYON", "ALPINE", "NEON", "GROVE", "ISLAND", "VOLCANO", "TOWN", "METRO", "WETLANDS", "HARBOR", "SALTFLATS", "NOCTURNE", "DUSKMESA", "GRID", "ORBITAL"]
+const KEYS := ["CANYON", "ALPINE", "NEON", "GROVE", "ISLAND", "VOLCANO", "TOWN", "METRO", "WETLANDS", "HARBOR", "SALTFLATS", "NOCTURNE", "DUSKMESA", "GRID", "ORBITAL", "CRYSTAL"]
 
 const DATA := {
 	"CANYON": {"name": "Canyon", "accent": "#ff9a3c", "onAccent": "#160b02", "fog": 0xe8ad7c, "fogNear": 130.0, "fogFar": 380.0, "hemiS": 0xffe0bd, "hemiG": 0x8a4a2a, "hemiI": 0.85, "sun": 0xffe6c4, "sunI": 1.2, "sunDir": [-0.8, 1.0, 0.55],
@@ -78,6 +78,10 @@ const DATA := {
 		"gLow": 0x09111f, "gHigh": 0x14233a, "shoulder": 0x26374a, "road": "#111b2b", "edge": "rgba(105,225,255,.95)", "dash": "rgba(255,197,122,.88)", "curbA": 0x54d9ff, "curbB": 0x1b2b40,
 		"amp": 0.0, "night": true, "space": true, "weather": "none", "grip": 1.0, "smoke": 0x80caff, "lights": 0.8, "grade": {"tint": [0.9, 0.98, 1.12], "sat": 1.12, "cloud": 0.0, "vig": 0.26},
 		"words": [["Kepler", "Aster", "Lagrange", "Zenith", "Europa", "Starlight", "Apogee", "Vega"], ["Habitat", "Array", "Dock", "Transit", "Ring", "Station", "Passage", "Orbit"]]},
+	"CRYSTAL": {"name": "Crystal Caverns", "accent": "#8be8ff", "onAccent": "#07141e", "fog": 0x262d43, "fogNear": 65.0, "fogFar": 255.0, "hemiS": 0x829fd1, "hemiG": 0x302d46, "hemiI": 1.28, "sun": 0x9ec8ff, "sunI": 0.9, "sunDir": [-0.45, 0.8, 0.3],
+		"gLow": 0x525b73, "gHigh": 0x70768c, "shoulder": 0x4c566d, "road": "#252b3b", "edge": "rgba(183,210,231,.9)", "dash": "rgba(223,207,181,.82)", "curbA": 0x65bcb9, "curbB": 0x686174,
+		"amp": 10.0, "crystal": true, "weather": "none", "grip": 0.97, "smoke": 0x9ab8d8, "lights": 0.55, "grade": {"tint": [0.94, 0.98, 1.06], "sat": 1.1, "cloud": 0.0, "vig": 0.3},
+		"words": [["Quartz", "Amethyst", "Sapphire", "Geode", "Prism", "Glimmer", "Lumen", "Fluorite"], ["Grotto", "Cathedral", "Chasm", "Vault", "Cavern", "Vein", "Hollow", "Abyss"]]},
 }
 
 
@@ -94,6 +98,10 @@ static func variant(key: String, night: bool) -> Dictionary:
 	var base: Dictionary = DATA[key]
 	var e := base.duplicate(true)
 	e["key"] = key
+	if base.get("crystal", false):
+		e["dark"] = true
+		e["tod"] = "Underground"
+		return e
 	if base.get("night", false):
 		if night:
 			e["dark"] = true

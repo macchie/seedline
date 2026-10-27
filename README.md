@@ -47,7 +47,7 @@ players who share a code race the exact same track. Find the line, set the time,
 
 ## Features
 
-- **Seed-built tracks** — fifteen available environments with generated scenery, checkpoints, weather,
+- **Seed-built tracks** — sixteen available environments with generated scenery, checkpoints, weather,
   terrain and boost pads, plus a cached minimap preview for every saved track.
 - **Precision driving** — a fixed 120 Hz car simulation, three-lap races, drift and boost, track
   boundaries, and ordered anti-cut gates.
@@ -64,10 +64,11 @@ players who share a code race the exact same track. Find the line, set the time,
 
 ## Worlds
 
-Fifteen hand-tuned environments are currently available, each with its own terrain, weather,
+Sixteen hand-tuned environments are currently available, each with its own terrain, weather,
 lighting and scenery. The environment is derived from the seed, or forced with a seed prefix — e.g.
 `GRID-LIGHTCYCLE77`. Metro blends a dusk skyline, Art Deco tower, palms, streetcars and rain-lit avenues.
-Orbital Habitat adds a starfield, ringed planet, and detailed solar-array stations.
+Orbital Habitat adds a starfield, ringed planet, and detailed solar-array stations. Crystal Caverns
+descends through vaulted stone arches, luminous mineral spires and drifting crystal dust.
 
 <table>
   <tr>
@@ -94,6 +95,7 @@ Orbital Habitat adds a starfield, ringed planet, and detailed solar-array statio
   </tr>
   <tr>
 	<td><img src="website/public/screenshots/env/metro.webp" alt="Metro — a dusk city skyline and rain-lit avenue" /><p align="center"><b>Metro</b><br><sub>Dusk skyline and rain-lit avenue</sub></p></td>
+	<td><img src="website/public/screenshots/env/crystal.webp" alt="Crystal Caverns — glowing mineral formations beneath a vast stone vault" /><p align="center"><b>Crystal Caverns</b><br><sub>Bioluminescent geodes and cavern arches</sub></p></td>
   </tr>
 </table>
 
