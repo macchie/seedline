@@ -47,7 +47,7 @@ players who share a code race the exact same track. Find the line, set the time,
 
 ## Features
 
-- **Seed-built tracks** — fourteen available environments with generated scenery, checkpoints, weather,
+- **Seed-built tracks** — fifteen available environments with generated scenery, checkpoints, weather,
   terrain and boost pads, plus a cached minimap preview for every saved track.
 - **Precision driving** — a fixed 120 Hz car simulation, three-lap races, drift and boost, track
   boundaries, and ordered anti-cut gates.
@@ -64,9 +64,10 @@ players who share a code race the exact same track. Find the line, set the time,
 
 ## Worlds
 
-Fourteen hand-tuned environments are currently available, each with its own terrain, weather,
+Fifteen hand-tuned environments are currently available, each with its own terrain, weather,
 lighting and scenery. The environment is derived from the seed, or forced with a seed prefix — e.g.
-`GRID-LIGHTCYCLE77`. Orbital Habitat adds a starfield, ringed planet, and detailed solar-array stations.
+`GRID-LIGHTCYCLE77`. Metro blends a dusk skyline, Art Deco tower, palms, streetcars and rain-lit avenues.
+Orbital Habitat adds a starfield, ringed planet, and detailed solar-array stations.
 
 <table>
   <tr>
@@ -90,6 +91,9 @@ lighting and scenery. The environment is derived from the seed, or forced with a
 	<td><img src="website/public/screenshots/env/duskmesa.webp" alt="Dusk Mesa — vaporwave desert" /><p align="center"><b>Dusk Mesa</b><br><sub>Vaporwave desert</sub></p></td>
 	<td><img src="website/public/screenshots/env/orbital.webp" alt="Orbital Habitat — racing along the illuminated orbital circuit" /><p align="center"><b>Orbital Habitat</b><br><sub>Ringed planet and station arrays</sub></p></td>
 	<td><img src="website/public/screenshots/env/grid.webp" alt="Grid — lightgrid void" /><p align="center"><b>Grid</b><br><sub>Lightgrid void</sub></p></td>
+  </tr>
+  <tr>
+	<td><img src="website/public/screenshots/env/metro.webp" alt="Metro — a dusk city skyline and rain-lit avenue" /><p align="center"><b>Metro</b><br><sub>Dusk skyline and rain-lit avenue</sub></p></td>
   </tr>
 </table>
 

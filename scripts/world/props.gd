@@ -574,6 +574,8 @@ func build() -> void:
 			volcano()
 		"WETLANDS":
 			wetlands()
+		"METRO":
+			metro_city()
 		"HARBOR":
 			harbor()
 		"SALTFLATS":
@@ -1477,6 +1479,198 @@ func town() -> void:
 		g.add_child(clk)
 		obst(ch, 4.5)
 	balloons(2)
+	birds(e.birds)
+
+
+func metro_city() -> void:
+	var window_mat := T({"map": Tex.city_windows(), "emissive": 0xffe0b0, "emissive_map": true, "emissive_i": 0.72})
+	var roof_mat := T({"color": 0x3f4854})
+	var walls := [window_mat, window_mat, roof_mat, roof_mat, window_mat, window_mat]
+	var facades := [0x707b84, 0x89908f, 0x89766d, 0x596a78, 0x77716b, 0x9a8b7b]
+	var candidates := spaced(around(170, HW + 20.0, 205.0, 0.38), 20.0)
+	var row_lots: Array = []
+	var row_step := maxi(8, int(round(34.0 / U.DS)))
+	var ri := int(row_step / 2)
+	while ri < t.n:
+		if t.py[ri] <= 0.3:
+			for side: float in [-1.0, 1.0]:
+				var off := HW + 12.0 + R() * 5.0
+				var x := t.px[ri] + t.nx[ri] * off * side
+				var z := t.pz[ri] + t.nz[ri] * off * side
+				if not w.water_near(x, z, 5.0):
+					row_lots.append({"x": x, "y": w.terrain_h(x, z, off), "z": z, "d": off, "i": ri, "r": R(), "s": R(),
+						"a": atan2(t.tx[ri], t.tz[ri]), "nx": t.nx[ri], "nz": t.nz[ri], "side": side, "streetfront": true})
+		ri += row_step
+	candidates.append_array(slice(spaced(row_lots, 18.0, candidates, 17.0), 145))
+	var blocks: Array = []
+	var awnings: Array = []
+	var crowns: Array = []
+	var roof_tanks: Array = []
+	var towers: Array = []
+	for p in candidates:
+		var h: float
+		if p.get("streetfront", false):
+			h = 22.0 + p.s * 18.0
+		elif p.d < HW + 58.0:
+			h = 13.0 + p.s * 13.0
+		elif p.d < HW + 112.0:
+			h = 24.0 + p.s * 28.0
+		else:
+			h = 42.0 + p.s * 55.0
+		if p.r > 0.82:
+			h += 16.0
+		var b: Dictionary = p.duplicate()
+		b["h"] = h
+		b["bw"] = (12.0 + p.r * 8.0) if p.get("streetfront", false) else (9.0 + p.r * 9.0)
+		b["bd"] = (18.0 + p.s * 6.0) if p.get("streetfront", false) else (9.0 + p.s * 8.0)
+		b["facade"] = col(pick(facades))
+		blocks.append(b)
+		if p.get("streetfront", false) and p.r < 0.72:
+			awnings.append(b)
+		if h > 58.0:
+			b["tier_h"] = 7.0 + p.r * 5.0
+			b["upper_h"] = 6.0 + p.s * 3.0
+			crowns.append(b)
+			towers.append(b)
+		elif h < 36.0 and p.r > 0.48:
+			roof_tanks.append(b)
+	w.inst(boxG, walls, blocks, func(p, d, i):
+		d.position = Vector3(p.x, p.y, p.z)
+		d.rotation.y = p.a
+		d.scale = Vector3(p.bw, p.h, p.bd)
+		if p.d < HW + 54.0:
+			w.add_obstacle(p.x, p.z, minf(p.bw, p.bd) * 0.42)
+		return tint(p.facade, 0.2))
+	w.inst(boxG, T(), awnings, func(p, d, i):
+		var front: float = -p.side * (p.bw * 0.5 + 0.4)
+		d.position = Vector3(p.x + p.nx * front, p.y + 3.2, p.z + p.nz * front)
+		d.rotation.y = p.a
+		d.scale = Vector3(0.9, 0.55, p.bd * 0.42)
+		return col([0xb94f46, 0xd09b52, 0x4c6b7b][i % 3]), false)
+	var setbacks: Array = []
+	var upper_tiers: Array = []
+	for p in crowns:
+		var top: Dictionary = p.duplicate()
+		setbacks.append(top)
+		var tier: Dictionary = p.duplicate()
+		tier["tier_h"] = p.upper_h
+		upper_tiers.append(tier)
+	w.inst(boxG, walls, setbacks, func(p, d, i):
+		d.position = Vector3(p.x, p.y + p.h, p.z)
+		d.rotation.y = p.a
+		d.scale = Vector3(p.bw * 0.66, p.tier_h, p.bd * 0.68)
+		return tint(p.facade, 0.12), false)
+	w.inst(boxG, walls, upper_tiers, func(p, d, i):
+		d.position = Vector3(p.x, p.y + p.h + p.tier_h, p.z)
+		d.rotation.y = p.a
+		d.scale = Vector3(p.bw * 0.4, p.tier_h, p.bd * 0.42)
+		return tint(p.facade, 0.12), false)
+	var antenna := Geo.cylinder(0.12, 0.2, 15.0, 6).translate(0, 7.5, 0)
+	w.inst(antenna, T({"color": 0x79828a}), slice(towers, 12), func(p, d, i):
+		d.position = Vector3(p.x, p.y + p.h + p.tier_h + p.upper_h, p.z)
+		d.rotation.y = p.a
+		return Color.WHITE, false)
+	# An Art Deco crown gives the skyline a recognizable downtown silhouette.
+	if not towers.is_empty():
+		var p: Dictionary = towers[0]
+		var spire := group(p.x, p.y + p.h + p.tier_h * 2.0, p.z)
+		for i in 3:
+			var level := mesh(boxG, T({"color": [0x56606b, 0x69717a, 0x82858a][i]}), true)
+			var width: float = p.bw * [0.58, 0.42, 0.27][i]
+			var depth: float = p.bd * [0.6, 0.44, 0.3][i]
+			var height := 4.0 if i < 2 else 7.0
+			level.position.y = (4.0 if i == 0 else (8.0 if i == 1 else 13.5))
+			level.scale = Vector3(width, height, depth)
+			spire.add_child(level)
+		var mast := mesh(Geo.cylinder(0.11, 0.18, 14.0, 6).translate(0, 7.0, 0), T({"color": 0xc3b9a7}))
+		mast.position.y = 20.0
+		spire.add_child(mast)
+	# Rooftop tanks and utility sheds break up the repeating roofline.
+	for p in slice(roof_tanks, 10):
+		var roof := group(p.x, p.y + p.h, p.z)
+		for side: float in [-1.0, 1.0]:
+			var leg := mesh(Geo.cylinder(0.12, 0.12, 2.2, 5).translate(0, 1.1, 0), T({"color": 0x414951}))
+			leg.position = Vector3(side * 1.1, 0.0, 0.0)
+			roof.add_child(leg)
+		var tank := mesh(Geo.cylinder(1.45, 1.45, 2.0, 10).translate(0, 3.2, 0), T({"color": 0x77756f}))
+		roof.add_child(tank)
+		var cap := mesh(Geo.cone(1.5, 0.75, 10).translate(0, 4.55, 0), T({"color": 0x8e8980}))
+		roof.add_child(cap)
+	# Warm street lamps reflect off the damp avenues.
+	var lamps: Array = []
+	var li := 4
+	while li < t.n:
+		if t.py[li] <= 0.3:
+			var s := 1.0 if (li / 18) % 2 == 0 else -1.0
+			var o := s * (HW + 4.2)
+			var x := t.px[li] + t.nx[li] * o
+			var z := t.pz[li] + t.nz[li] * o
+			lamps.append({"x": x, "y": w.terrain_h(x, z, absf(o)), "z": z, "a": atan2(t.tx[li], t.tz[li])})
+		li += 18
+	w.inst(Geo.cylinder(0.16, 0.22, 8.0, 7).translate(0, 4.0, 0), T({"color": 0x343b45}), lamps, func(p, d, i):
+		d.position = Vector3(p.x, p.y, p.z)
+		w.add_obstacle(p.x, p.z, 0.4))
+	w.inst(boxG, Mats.basic({"color": 0x333943}), lamps, func(p, d, i):
+		d.position = Vector3(p.x, p.y + 8.0, p.z)
+		d.rotation.y = p.a
+		d.scale = Vector3(1.8, 0.16, 0.16))
+	var glow_p := PackedVector3Array()
+	for p in lamps:
+		glow_p.append(Vector3(p.x, p.y + 8.25, p.z))
+	w.sprites(glow_p, null, 3.4, {"blend": "add", "color": 0xffd18c, "opacity": 0.82})
+	var pool := Geo.plane(14.0, 14.0)
+	pool.rotate_x(-PI / 2.0)
+	w.inst(pool, Mats.basic({"map": Tex.radial(), "color": 0xffc879, "opacity": 0.1, "blend": "add"}), lamps, func(p, d, i):
+		d.position = Vector3(p.x, p.y + 0.1, p.z), false)
+	# A few palms bring the warmer, west-coast edge of the city into the skyline.
+	var palms := spaced(around(28, HW + 20.0, 115.0, 0.35), 20.0, blocks, 17.0)
+	var trunk := Geo.cylinder(0.3, 0.48, 18.0, 7).translate(0, 9.0, 0)
+	var crown := Geo.cone(5.2, 1.6, 8).rotate_x(PI).translate(0, 17.6, 0)
+	w.inst(trunk, anim({}, "sway", 0.008), palms, func(p, d, i):
+		var s: float = 0.82 + p.s * 0.4
+		d.position = Vector3(p.x, p.y, p.z)
+		d.scale = Vector3(s, s, s)
+		d.rotation = Vector3(0.0, p.a, (p.r - 0.5) * 0.12)
+		w.add_obstacle(p.x, p.z, 0.8)
+		return tint(0x73604b, 0.6))
+	w.inst(crown, anim({}, "sway", 0.008), palms, func(p, d, i):
+		var s: float = 0.82 + p.s * 0.4
+		d.position = Vector3(p.x, p.y, p.z)
+		d.scale = Vector3(s, s, s)
+		d.rotation = Vector3(0.0, p.a, (p.r - 0.5) * 0.12)
+		return tint(0x477354 if p.r < 0.5 else 0x66865a, 0.5), false)
+	# Side-street taxis and cable-car-red shuttles add scale without obstructing the racing line.
+	var traffic: Array = []
+	var ci := 12
+	while ci < t.n:
+		if t.py[ci] <= 0.2 and absf(t.k[ci]) < 0.025 and R() < 0.44:
+			var s := -1.0 if R() < 0.5 else 1.0
+			var o := s * (HW + 9.0)
+			var x := t.px[ci] + t.nx[ci] * o
+			var z := t.pz[ci] + t.nz[ci] * o
+			traffic.append({"x": x, "y": w.terrain_h(x, z, absf(o)), "z": z, "a": atan2(t.tx[ci], t.tz[ci]), "c": col(pick([0xe5b34f, 0xb94f46, 0xd8d1bd, 0x526a7a]))})
+		ci += 34
+	traffic = slice(spaced(traffic, 10.0), 8)
+	w.inst(boxG, T(), traffic, func(p, d, i):
+		d.position = Vector3(p.x, p.y + 0.48, p.z)
+		d.rotation.y = p.a
+		d.scale = Vector3(2.2, 0.9, 4.8)
+		return p.c)
+	w.inst(boxG, T({"color": 0x283541}), traffic, func(p, d, i):
+		d.position = Vector3(p.x, p.y + 1.18, p.z)
+		d.rotation.y = p.a
+		d.scale = Vector3(1.75, 0.52, 2.35))
+	# Small, warm-lit corner signs echo classic avenue and storefront signage.
+	var signs := slice(spaced(around(14, HW + 14.0, 66.0, 0.15), 35.0), 5)
+	var sign_text := ["HOTEL", "CITY LINE", "DELI 24H", "MARKET", "SUNSET"]
+	for i in signs.size():
+		var p: Dictionary = signs[i]
+		var post := group(p.x, p.y, p.z)
+		post.rotation.y = PI
+		var sign := neon_sign(sign_text[i], "#ffe0a6", "#d88254")
+		sign.position.y = 9.0
+		post.add_child(sign)
+		w.add_obstacle(p.x, p.z, 0.8)
 	birds(e.birds)
 
 

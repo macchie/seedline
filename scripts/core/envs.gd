@@ -3,7 +3,7 @@ class_name Envs
 
 const NIGHT_ENABLED := false  # night mode is built but switched off for now
 
-const KEYS := ["CANYON", "ALPINE", "NEON", "GROVE", "ISLAND", "VOLCANO", "TOWN", "WETLANDS", "HARBOR", "SALTFLATS", "NOCTURNE", "DUSKMESA", "GRID", "ORBITAL"]
+const KEYS := ["CANYON", "ALPINE", "NEON", "GROVE", "ISLAND", "VOLCANO", "TOWN", "METRO", "WETLANDS", "HARBOR", "SALTFLATS", "NOCTURNE", "DUSKMESA", "GRID", "ORBITAL"]
 
 const DATA := {
 	"CANYON": {"name": "Canyon", "accent": "#ff9a3c", "onAccent": "#160b02", "fog": 0xe8ad7c, "fogNear": 130.0, "fogFar": 380.0, "hemiS": 0xffe0bd, "hemiG": 0x8a4a2a, "hemiI": 0.85, "sun": 0xffe6c4, "sunI": 1.2, "sunDir": [-0.8, 1.0, 0.55],
@@ -42,6 +42,10 @@ const DATA := {
 		"gLow": 0x6f9e4b, "gHigh": 0x5c8a40, "shoulder": 0xcfc8bc, "road": "#454850", "edge": "rgba(250,246,236,.9)", "dash": "rgba(250,246,236,.8)", "curbA": 0xd8453a, "curbB": 0xf6f2e8,
 		"amp": 4.0, "weather": "none", "grip": 1.0, "smoke": 0xd9d2c8, "lights": 0.45, "grade": {"tint": [1.03, 0.99, 0.95], "sat": 1.02, "cloud": 0.24}, "birds": [10, 0x5a5d66],
 		"river": true, "riverCol": 0x3f8aa8, "words": [["Market", "Bell", "Cobble", "Harbor", "Clock", "Bakery", "Maple", "Lantern"], ["Street", "Square", "Row", "Corner", "Quarter", "Lane", "Parade", "Circus"]]},
+	"METRO": {"name": "Metro", "accent": "#ffc078", "onAccent": "#211207", "fog": 0x9a8991, "fogNear": 120.0, "fogFar": 390.0, "hemiS": 0xffd2b0, "hemiG": 0x3e3b49, "hemiI": 0.96, "sun": 0xffbd8c, "sunI": 0.82, "sunDir": [-0.65, 0.85, 0.38],
+		"gLow": 0x596164, "gHigh": 0x46515b, "shoulder": 0x66656a, "road": "#343944", "edge": "rgba(244,235,218,.92)", "dash": "rgba(255,198,112,.86)", "curbA": 0xb94f46, "curbB": 0xe7d9c4,
+		"amp": 9.0, "city": true, "weather": "drizzle", "grip": 0.94, "smoke": 0xc1b6ae, "lights": 0.72, "grade": {"tint": [1.05, 0.99, 0.96], "sat": 1.06, "cloud": 0.12, "vig": 0.28}, "birds": [5, 0xb8c3ce],
+		"words": [["Broadway", "Crosstown", "Market", "Sunset", "Uptown", "Downtown", "Civic", "Harbor"], ["Avenue", "Boulevard", "Heights", "District", "Station", "Plaza", "Street", "Terrace"]]},
 	"WETLANDS": {"name": "Wetlands", "accent": "#76d6a0", "onAccent": "#07170f", "fog": 0x9bb4a7, "fogNear": 80.0, "fogFar": 245.0, "hemiS": 0xd7e8dc, "hemiG": 0x354d40, "hemiI": 0.82, "sun": 0xffe3b5, "sunI": 0.82, "sunDir": [-0.4, 1.0, 0.2],
 		"gLow": 0x596f46, "gHigh": 0x344b38, "shoulder": 0x77745a, "road": "#343c3a", "edge": "rgba(219,232,215,.9)", "dash": "rgba(224,212,150,.75)", "curbA": 0x6d9472, "curbB": 0xd9ddc9,
 		"amp": 1.0, "shore": true, "deep": 0x173e43, "river": true, "riverCol": 0x315e59, "weather": "rain", "grip": 0.91, "smoke": 0xc1d0c4, "lights": 0.18, "grade": {"tint": [0.95, 1.02, 0.94], "sat": 0.92, "cloud": 0.55}, "birds": [8, 0xc6d2c5],

@@ -6,7 +6,7 @@ class_name TrackGen
 ## Track length range in metres. Must stay inside the server's 1500-5000 m limit
 ## (server/nakama/modules/seedline.lua, CFG.min_length_m / max_length_m).
 const MIN_TRACK_LENGTH := 1000.0
-const MAX_TRACK_LENGTH := 7000.0
+const MAX_TRACK_LENGTH := 6000.0
 ## Fraction of the range kept clear at both ends when drawing the target length,
 ## so candidates (which drift after filleting) are not over-rejected.
 const LENGTH_MARGIN := 0.06
@@ -712,7 +712,7 @@ static func generate(seed: String, env_key: String) -> TrackData:
 	var valid := 0
 	var r := rng.next()
 	var fam := "loop"
-	var city := env_key == "TOWN" or env_key == "NEON" or env_key == "HARBOR"
+	var city := env_key == "TOWN" or env_key == "NEON" or env_key == "HARBOR" or env_key == "METRO"
 	if city and rng.next() < 0.45:
 		fam = "street"
 	else:

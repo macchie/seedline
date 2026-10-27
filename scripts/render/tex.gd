@@ -166,6 +166,16 @@ static func ground(e: Dictionary) -> ImageTexture:
 		var t := _to_tex(img)
 		_cache[key] = t
 		return t
+	if e.get("city", false):
+		var key := "ground_city"
+		if _cache.has(key):
+			return _cache[key]
+		var img := Image.create(256, 256, false, Image.FORMAT_RGBA8)
+		img.fill(Color("#43464c"))
+		_noise_paint(img, 16.0, 23)
+		var t := _to_tex(img)
+		_cache[key] = t
+		return t
 	if e.get("night", false):
 		var key := "ground_night"
 		if _cache.has(key):
@@ -255,6 +265,24 @@ static func windows() -> ImageTexture:
 			x += 8
 		y += 8
 	return _to_tex(img)
+
+
+static func city_windows() -> ImageTexture:
+	if _cache.has("city_windows"):
+		return _cache["city_windows"]
+	var img := Image.create(64, 128, false, Image.FORMAT_RGBA8)
+	img.fill(Color("#191d25"))
+	var colors := [Color("#f5cb8b"), Color("#f3dfa9"), Color("#93c5d6"), Color("#d99273")]
+	for y in range(5, 128, 12):
+		for x in range(4, 64, 10):
+			_blend(img, x - 1, y - 1, x + 6, y + 8, Color("#0d131d"))
+			if randf() < 0.56:
+				var c: Color = colors[randi() % colors.size()]
+				c.a = 0.58 + randf() * 0.42
+				_blend(img, x, y, x + 4, y + 6, c)
+	var t := _to_tex(img)
+	_cache["city_windows"] = t
+	return t
 
 
 ## Tileable value noise for cloud shadows, water and lava (same lattice values as the web build).

@@ -1858,14 +1858,17 @@ func _update_camera(dt: float, x: float, z: float, h: float, speed: float) -> vo
 	else:
 		# fixed-orientation tilted camera that leads the car in the direction it is travelling
 		var port := H > W
+		var city_view: bool = env.get("city", false)
 		# user camera-zoom preference (50 = default); scaling height and dolly-back together keeps
 		# the chase angle fixed and just slides the view a little closer or wider.
 		var zoomf := U.lerpf2(1.15, 0.85, U.clampf2(float(opts.get("zoom", 50)), 0.0, 100.0) / 100.0)
 		var ht := ((150.0 if port else 116.0) + speed * 0.55) * zoomf
-		var back := ht * 0.78
+		if city_view:
+			ht = (94.0 + speed * 0.28) * zoomf
+		var back := ht * (1.22 if city_view else 0.78)
 		var k2 := 0.95 if port else 1.05
 		var lx := x + U.clampf2(car.vx * k2 * (0.8 if port else 1.0), -58.0, 58.0)
-		var lz := z + U.clampf2(car.vz * k2, -58.0, 58.0) + (8.0 if port else 4.0)
+		var lz := z + U.clampf2(car.vz * k2, -58.0, 58.0) + (24.0 if city_view else (8.0 if port else 4.0))
 		var look := Vector3(lx, 0, lz)
 		var pos := Vector3(lx, ht, lz - back)
 		var kk := 1.0 if state == "countdown" else 1.0 - exp(-dt * 3.2)
