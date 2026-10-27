@@ -169,10 +169,6 @@ var ach_modal: Control
 var ach_box: VBoxContainer
 var ach_scroll: ScrollContainer
 var btn_trophy: Tap
-var acct_opt_status: Label
-var acct_opt_btn: Tap
-var acct_opt_lbl: Label
-var net_status_lbl: Label
 var f_rank: Label
 var f_rival: Label
 var f_event: Label
@@ -195,76 +191,24 @@ var paint_box: VBoxContainer
 var model_box: VBoxContainer
 var model_seg: Array = []
 var boost_box: VBoxContainer
-var fav_list: GridContainer
-var fav_empty: Label
-var recent_track_list: GridContainer
-var recent_track_empty: Label
-var track_action_modal: Control
-var track_action_box: VBoxContainer
-var track_action_preview: MapView
-var track_action_title: Label
-var track_action_sub: Label
-var track_action_race: Tap
-var track_action_watch: Tap
-var track_action_remove: Tap
-var _track_action_seed := ""
-var _track_action_env := ""
+# Tracks dialog (saved + recent grids, per-track action sheet) — see ui_tracks.gd
+var _tracks: UiTracks
+# preview-track cache stays in core: shared by the track tiles and the event cards
 var fav_track_cache := {}
 var fav_track_cache_order: Array[String] = []
-var fav_preview_views: Array[Dictionary] = []
-var recent_preview_views: Array[Dictionary] = []
-var fav_preview_revision := 0
-var fav_preview_task_running := false
 const FAV_TRACK_CACHE_LIMIT := 64
-var sens_slider: HSlider
-var sens_out: Label
-var zoom_slider: HSlider
-var zoom_out: Label
-var uiscale_slider: HSlider
-var uiscale_out: Label
-var fov_slider: HSlider
-var fov_out: Label
-var music_slider: HSlider
-var music_out: Label
-var sfx_slider: HSlider
-var sfx_out: Label
-# options content lives in options_body; it is reparented into options_modal when opened in-game
-var options_body: VBoxContainer
-var options_modal: Control
-var options_scroll: ScrollContainer
-# options are split into top tabs (Visuals / Controls / Other)
-var opt_tab_seg: Array = []
-var opt_visuals_box: VBoxContainer
-var opt_controls_box: VBoxContainer
-var opt_other_box: VBoxContainer
+# options pane/modal, sliders and key bindings — see ui_options.gd
+var _options: UiOptions
 # Rocket-League-style nav: Play/Garage stay in the scene, other entries open full-screen dialogs.
 var _active_section := ""
 var events_body: VBoxContainer
-var tracks_body: VBoxContainer
 var section_modal: Control
 var section_scroll: ScrollContainer
 var section_title_lbl: Label
 var _section_key := ""
-# global leaderboards dialog (skill by PP + exploration by unique tracks)
-var lbd_modal: Control
-var lbd_box: VBoxContainer
-var lbd_scroll: ScrollContainer
-var lbd_list: VBoxContainer
-var lbd_hero_rank: Label
-var lbd_hero_val: Label
-var lbd_hero_sub: Label
-var lbd_seg: Array = []
-var lbd_board := "global"
-var _lbd_data = null
-var opt_segs := {}
+# global leaderboards dialog (skill by PP + exploration by unique tracks) — see ui_leaderboards.gd
+var _leaderboards: UiLeaderboards
 var pad_boost: Tap
-var bind_dev := "kb"
-var bind_dev_btns: Array = []
-var bind_rows: VBoxContainer
-var bind_btns := {}
-var bind_note: Label
-var _rebind := {}
-var _rebind_t := 0
 var boost_l: Label
 var meter: BoostMeter
 var btn_play: Tap
@@ -526,16 +470,17 @@ func focus_default() -> void:
 	if color_popup and color_popup.visible:
 		return
 	if modal_open():
-		if section_modal.visible:
+		# the track-action sheet sits above the tracks section, so it keeps focus while open
+		if _tracks.track_action_modal.visible:
+			_tracks.track_action_race.grab_focus()
+		elif section_modal.visible:
 			(section_modal.get_meta("close") as Control).grab_focus()
-		elif lbd_modal.visible:
-			(lbd_modal.get_meta("close") as Control).grab_focus()
+		elif _leaderboards.modal.visible:
+			(_leaderboards.modal.get_meta("close") as Control).grab_focus()
 		elif ach_modal.visible:
 			(ach_modal.get_meta("close") as Control).grab_focus()
-		elif options_modal.visible:
-			sens_slider.grab_focus()
-		elif track_action_modal.visible:
-			track_action_race.grab_focus()
+		elif _options.modal.visible:
+			_options.sens_slider.grab_focus()
 		elif lb_modal.visible:
 			(lb_modal.get_meta("close") as Control).grab_focus()
 		elif debug_modal.visible:
@@ -852,8 +797,10 @@ func _build_menu() -> void:
 	_build_track_pane(panes_box)
 	_build_events_pane(panes_box)
 	_build_garage_pane(panes_box)
-	_build_tracks_pane(panes_box)
-	_build_options_pane(panes_box)
+	_tracks = UiTracks.new(self)
+	_tracks.build_pane(panes_box)
+	_options = UiOptions.new(self)
+	_options.build_pane(panes_box)
 	# play — the hero button: glossy accent slab with a play glyph, perfectly centred wordmark and a speed chevron
 	btn_play = tap(accent, Color(0, 0, 0, 0), 18.0)
 	btn_play.custom_minimum_size = Vector2(0, 76)
@@ -933,9 +880,9 @@ func _nav_select(v: String) -> void:
 		"tracks":
 			show_section("tracks")
 		"leaderboards":
-			show_leaderboards_dialog()
+			_leaderboards.show()
 		"options":
-			show_options(true)
+			_options.show(true)
 
 
 ## Persistent bottom toolbar: player card (avatar + name + status) plus now-racing / best / online.
@@ -1429,114 +1376,6 @@ func _set_garage_tab(v: String) -> void:
 	set_seg(garage_tab_seg, v)
 
 
-func _build_tracks_pane(parent: Control) -> void:
-	var p := _pane(parent, "tracks")
-	tracks_body = vbox(10)
-	tracks_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	p.add_child(tracks_body)
-	tracks_body.add_child(eyebrow("Saved tracks"))
-	fav_list = _track_grid()
-	tracks_body.add_child(fav_list)
-	fav_empty = L("No saved tracks yet. Save a track from Drive to keep it here.", "body", 400, 13, DIM)
-	fav_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	fav_empty.custom_minimum_size = Vector2(0, 36)
-	tracks_body.add_child(fav_empty)
-	tracks_body.add_child(eyebrow("Last played"))
-	recent_track_list = _track_grid()
-	tracks_body.add_child(recent_track_list)
-	recent_track_empty = L("Tracks you race or watch will appear here.", "body", 400, 13, DIM)
-	recent_track_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	recent_track_empty.custom_minimum_size = Vector2(0, 36)
-	tracks_body.add_child(recent_track_empty)
-
-
-func _track_grid() -> GridContainer:
-	var g := GridContainer.new()
-	g.columns = 3
-	g.add_theme_constant_override("h_separation", 8)
-	g.add_theme_constant_override("v_separation", 8)
-	g.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	g.mouse_filter = Control.MOUSE_FILTER_PASS
-	return g
-
-
-## One track tile (minimap + name + seed) for the saved / recent grids; tapping opens the action dialog.
-func _track_tile(seed_s: String, env_s: String, title: String, show_remove: bool) -> Dictionary:
-	if not Envs.DATA.has(env_s):
-		var parsed = game.parse_seed(seed_s)
-		if parsed != null:
-			env_s = str(parsed.env)
-	var ed: Dictionary = Envs.DATA.get(env_s, {})
-	var acc := U.css(ed.accent) if not ed.is_empty() else accent
-	var cur: bool = game.track != null and seed_s == game.track.seed and env_s == game.track.env_key
-	# wash the card in a hint of the environment's accent so each world reads at a glance
-	var tint := Color(acc.r, acc.g, acc.b, 0.14 if cur else 0.08)
-	var cell := tap(tint, accent if cur else Color(acc.r, acc.g, acc.b, 0.22), 12.0)
-	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cell.pad(8, 8, 8, 8)
-	cell.tooltip_text = "Open " + title
-	var col := vbox(6)
-	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var pbox := glass(Color(0, 0, 0, 0.26), LINE, 9.0)
-	pbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pbox.pad(3, 3, 3, 3)
-	var preview := MapView.new()
-	preview.preview = true
-	preview.custom_minimum_size = Vector2(116, 116)
-	pbox.add_child(preview)
-	col.add_child(pbox)
-	var name_lbl := L(title, "display", 800, 13, FG, true, 0.0, true)
-	name_lbl.clip_text = true
-	name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	name_lbl.custom_minimum_size = Vector2(1, 0)
-	col.add_child(name_lbl)
-	# environment line: a colour dot + the world's name, with its weather tagged on the right
-	if not ed.is_empty():
-		var env_row := hbox(5)
-		var ed_dot := dot(acc, 7)
-		ed_dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		env_row.add_child(ed_dot)
-		var env_lbl := L(str(ed.name), "body", 600, 10, acc, false, 0.02, true)
-		env_lbl.clip_text = true
-		env_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		env_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		env_row.add_child(env_lbl)
-		var weather_s := str(ed.get("weather", "none"))
-		if weather_s != "none" and weather_s != "":
-			var w_lbl := L(weather_s.capitalize(), "body", 500, 9, DIM, false, 0.04, true)
-			w_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			env_row.add_child(w_lbl)
-		col.add_child(env_row)
-	var meta := vbox(2)
-	# seed is always shown so every tile stays shareable, best time sits on its own line below
-	var seed_lbl := L(seed_s, "mono", 500, 10, DIM)
-	seed_lbl.clip_text = true
-	seed_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	seed_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	meta.add_child(seed_lbl)
-	var bt = _best_time(seed_s)
-	var has_replay := _has_replay(seed_s)
-	if bt != null or has_replay:
-		var line := hbox(5)
-		if bt != null:
-			var best_lbl := L("BEST " + U.fmt(bt), "mono", 500, 10, accent)
-			best_lbl.clip_text = true
-			best_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			line.add_child(best_lbl)
-		if has_replay:
-			var r := Icon.new("respawn", 13)
-			r.color = accent
-			r.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			r.tooltip_text = "Replay available"
-			line.add_child(r)
-		meta.add_child(line)
-	col.add_child(meta)
-	cell.add_child(col)
-	var env_final := env_s
-	cell.pressed.connect(func(): show_track_action(seed_s, env_final, title, show_remove))
-	return {"cell": cell, "view": {"map": preview, "seed": seed_s, "env": env_final, "accent": acc}}
-
-
 func _best_time(seed_s: String):
 	var b = Store.get_value("best5." + seed_s, null)
 	return b.t if (b is Dictionary and b.has("t")) else null
@@ -1554,147 +1393,6 @@ func _has_replay(seed_s: String) -> bool:
 	return (inputs is Array and not inputs.is_empty()) or (ghost is Array and ghost.size() >= 6)
 
 
-func _build_track_action_modal() -> void:
-	track_action_modal = ColorRect.new()
-	(track_action_modal as ColorRect).color = Color(5 / 255.0, 6 / 255.0, 10 / 255.0, 0.72)
-	track_action_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
-	track_action_modal.mouse_filter = Control.MOUSE_FILTER_STOP
-	track_action_modal.visible = false
-	add_child(track_action_modal)
-	var card := glass(PANEL, LINE, 20.0, 3.0)
-	card.pad(22, 20, 22, 20)
-	card.clip_contents = true
-	track_action_modal.add_child(card)
-	track_action_box = vbox(12)
-	track_action_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	card.add_child(track_action_box)
-	var head := hbox(8)
-	var htext := vbox(2)
-	htext.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	htext.add_child(eyebrow("Track"))
-	track_action_title = L("Track", "display", 800, 24, FG, true, 0.0, true)
-	track_action_title.clip_text = true
-	track_action_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	track_action_title.custom_minimum_size = Vector2(1, 0)
-	htext.add_child(track_action_title)
-	head.add_child(htext)
-	var cb := icon_btn("x")
-	cb[0].size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	cb[0].pressed.connect(func(): hide_track_action())
-	head.add_child(cb[0])
-	track_action_modal.set_meta("close", cb[0])
-	track_action_box.add_child(head)
-	var prow := hbox(12)
-	var pbox := glass(Color(0, 0, 0, 0.26), LINE, 10.0)
-	pbox.custom_minimum_size = Vector2(120, 120)
-	pbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	pbox.pad(4, 4, 4, 4)
-	track_action_preview = MapView.new()
-	track_action_preview.preview = true
-	track_action_preview.custom_minimum_size = Vector2(112, 112)
-	pbox.add_child(track_action_preview)
-	prow.add_child(pbox)
-	var pcol := vbox(6)
-	pcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pcol.alignment = BoxContainer.ALIGNMENT_CENTER
-	track_action_sub = L("", "body", 500, 12, DIM)
-	track_action_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	track_action_sub.custom_minimum_size = Vector2(1, 0)
-	pcol.add_child(track_action_sub)
-	prow.add_child(pcol)
-	track_action_box.add_child(prow)
-	var race := _cbtn("Race this track", true, "A")
-	track_action_race = race[0]
-	race[0].pressed.connect(func(): _track_action_do("race"))
-	track_action_box.add_child(race[0])
-	var watch := _cbtn("Watch replay", false)
-	track_action_watch = watch[0]
-	watch[0].pressed.connect(func(): _track_action_do("watch"))
-	track_action_box.add_child(watch[0])
-	var remove := _cbtn("Remove from saved", false)
-	track_action_remove = remove[0]
-	remove[0].pressed.connect(func(): _track_action_do("remove"))
-	track_action_box.add_child(remove[0])
-	var close := _cbtn("Cancel", false, "Esc")
-	close[0].pressed.connect(func(): hide_track_action())
-	track_action_box.add_child(close[0])
-
-
-func show_track_action(seed_s: String, env_s: String, title: String, is_fav: bool) -> void:
-	if track_action_modal == null:
-		return
-	if not Envs.DATA.has(env_s):
-		var parsed = game.parse_seed(seed_s)
-		if parsed != null:
-			env_s = str(parsed.env)
-	_track_action_seed = seed_s
-	_track_action_env = env_s
-	track_action_title.text = title.to_upper()
-	var acc := U.css(Envs.DATA[env_s].accent) if Envs.DATA.has(env_s) else accent
-	var env_name := str(Envs.DATA[env_s].name) if Envs.DATA.has(env_s) else env_s
-	var bt = _best_time(seed_s)
-	var sub := env_name
-	if Envs.DATA.has(env_s):
-		var weather_s := str(Envs.DATA[env_s].get("weather", "none"))
-		if weather_s != "none" and weather_s != "":
-			sub += "  \u00b7  " + weather_s.capitalize()
-	sub += "  \u00b7  " + seed_s
-	if bt != null:
-		sub += "\nYour best " + U.fmt(bt)
-	track_action_sub.text = sub
-	track_action_watch.visible = _has_replay(seed_s)
-	track_action_remove.visible = is_fav
-	track_action_preview.t = null
-	track_action_preview.set_track(_cached_fav_track(seed_s, env_s), acc)
-	# draw above the tracks section it was opened from (built earlier, so a lower sibling)
-	move_child(track_action_modal, get_child_count() - 1)
-	track_action_modal.visible = true
-	_set_stick_direction(Vector2i.ZERO)
-	relayout()
-	_rise(track_action_modal.get_child(0))
-	track_action_race.grab_focus()
-
-
-func hide_track_action() -> void:
-	if track_action_modal == null or not track_action_modal.visible:
-		return
-	track_action_modal.visible = false
-	_set_stick_direction(Vector2i.ZERO)
-	var focus := _focus_owner()
-	if focus and track_action_modal.is_ancestor_of(focus):
-		focus.release_focus()
-	if menu_on and game.menu_tab == "tracks":
-		call_deferred("_focus_tracks_entry")
-
-
-func _track_action_do(kind: String) -> void:
-	var s := _track_action_seed
-	var e := _track_action_env
-	hide_track_action()
-	if kind == "race":
-		# close the tracks dialog so the race (and the Play screen behind it) isn't covered
-		hide_section()
-		game.race_track(s, e)
-	elif kind == "watch":
-		hide_section()
-		game.replay_track(s, e)
-	elif kind == "remove":
-		game.remove_fav(s)
-
-
-func _layout_track_action(W: float, H: float, sl: float, sr: float, st: float, sb: float) -> void:
-	if track_action_modal == null:
-		return
-	var card: Glass = track_action_modal.get_child(0)
-	var cw := minf(420.0, W - sl - sr - 16.0)
-	track_action_box.custom_minimum_size.x = cw - 44.0
-	track_action_sub.custom_minimum_size.x = maxf(80.0, cw - 44.0 - 132.0)
-	card.size = Vector2(cw, 0)
-	card.size = Vector2(cw, minf(card.get_combined_minimum_size().y, H - st - sb - 16.0))
-	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - card.size.y) / 2.0))
-	card._sync()
-
-
 func _open_picker() -> void:
 	color_picker.color = U.css(game.car_cfg.boost_color if picker_target == "booster" else game.car_cfg.color)
 	var sz := Vector2i(
@@ -1709,223 +1407,6 @@ func _focus_color_picker() -> void:
 	if color_popup.visible:
 		color_picker.grab_focus()
 
-
-## A labelled 0..100 slider inside an options card: a title+readout row, the slider, and the two end
-## captions. Returns [slider, readout_label]; the caller wires persistence and fills the readout text.
-func _slider_card(col: VBoxContainer, label: String, left: String, right: String, cb: Callable) -> Array:
-	var row := hbox(0)
-	var a := L(label, "body", 500, 12, DIM)
-	a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	a.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	row.add_child(a)
-	var out := L("Default", "body", 600, 11, FG, false, 0.16, true)
-	out.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	row.add_child(out)
-	col.add_child(row)
-	var s := HSlider.new()
-	s.min_value = 0
-	s.max_value = 100
-	s.step = 1
-	s.custom_minimum_size = Vector2(0, 30)
-	s.focus_mode = Control.FOCUS_ALL
-	_style_slider(s)
-	s.value_changed.connect(cb)
-	col.add_child(s)
-	var rl := hbox(0)
-	var gl := L(left, "body", 600, 10, DIM, false, 0.12, true)
-	gl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rl.add_child(gl)
-	rl.add_child(L(right, "body", 600, 10, DIM, false, 0.12, true))
-	col.add_child(rl)
-	return [s, out]
-
-
-func _build_options_pane(parent: Control) -> void:
-	var p := _pane(parent, "options")
-	options_body = vbox(12)
-	options_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	p.add_child(options_body)
-	# top tab strip: Visuals / Controls / Other
-	var ts := seg([["visuals", "Visuals"], ["controls", "Controls"], ["other", "Other"]], func(v): _set_options_tab(v))
-	opt_tab_seg = ts[1]
-	options_body.add_child(ts[0])
-	# one scrollable column per tab (only the active one is visible)
-	opt_visuals_box = vbox(12)
-	opt_controls_box = vbox(12)
-	opt_other_box = vbox(12)
-	for b in [opt_visuals_box, opt_controls_box, opt_other_box]:
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		options_body.add_child(b)
-	# each setting lives in its own titled card so the page reads cleanly
-	var group := func(host: Control, title: String) -> VBoxContainer:
-		var card := glass(PANEL2, LINE, 12.0)
-		card.pad(16, 14, 16, 14)
-		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var col := vbox(10)
-		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		card.add_child(col)
-		col.add_child(eyebrow(title))
-		host.add_child(card)
-		return col
-
-	# ---------- Visuals ----------
-	for spec in [["gfx", "Graphics", [["high", "Toon shading"], ["low", "Battery saver"]]],
-			["quality", "Detail", [["low", "Low"], ["med", "Medium"], ["high", "High"]]],
-			["msaa", "Anti-aliasing", [["off", "Off"], ["fxaa", "FXAA"], ["2x", "2×"], ["4x", "4×"]]],
-			["stats", "Frame rate readout", [["", "Hidden"], ["1", "Shown"]]]]:
-		var col := group.call(opt_visuals_box, spec[1]) as VBoxContainer
-		var k: String = spec[0]
-		var s := seg(spec[2], func(v): game.set_opt(k, v))
-		opt_segs[k] = s[1]
-		col.add_child(s[0])
-	# camera zoom (dolly in/out), interface scale and field of view — each a 0..100 slider, 50 = default
-	var zc := _slider_card(group.call(opt_visuals_box, "Camera zoom"), "Zoom", "Wider", "Closer", func(v): game.set_zoom(int(v)))
-	zoom_slider = zc[0]
-	zoom_out = zc[1]
-	var uc := _slider_card(group.call(opt_visuals_box, "Interface scale"), "Scale", "Smaller", "Larger", func(v): game.set_ui_scale(int(v)))
-	uiscale_slider = uc[0]
-	uiscale_out = uc[1]
-	var fc := _slider_card(group.call(opt_visuals_box, "Field of view"), "FOV", "Narrow", "Wide", func(v): game.set_fov(int(v)))
-	fov_slider = fc[0]
-	fov_out = fc[1]
-
-	# ---------- Controls ----------
-	# touch steering sensitivity
-	var tcol := group.call(opt_controls_box, "Touch steering") as VBoxContainer
-	var srow := hbox(0)
-	var sa := L("Sensitivity", "body", 500, 12, DIM)
-	sa.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sa.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	srow.add_child(sa)
-	sens_out = L("Quick", "body", 600, 11, FG, false, 0.16, true)
-	sens_out.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	srow.add_child(sens_out)
-	tcol.add_child(srow)
-	sens_slider = HSlider.new()
-	sens_slider.min_value = 0
-	sens_slider.max_value = 100
-	sens_slider.step = 1
-	sens_slider.custom_minimum_size = Vector2(0, 30)
-	sens_slider.focus_mode = Control.FOCUS_ALL
-	_style_slider(sens_slider)
-	sens_slider.value_changed.connect(func(v): game.set_sens(int(v)))
-	tcol.add_child(sens_slider)
-	var rl := hbox(0)
-	var gl := L("Gentle", "body", 600, 10, DIM, false, 0.12, true)
-	gl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rl.add_child(gl)
-	rl.add_child(L("Quick", "body", 600, 10, DIM, false, 0.12, true))
-	tcol.add_child(rl)
-	# steering hand
-	var hcol := group.call(opt_controls_box, "Steering hand") as VBoxContainer
-	var hs := seg([["left", "Left thumb"], ["right", "Right thumb"]], func(v): game.set_opt("side", v))
-	opt_segs["side"] = hs[1]
-	hcol.add_child(hs[0])
-	# vibration (touch buzz + gamepad rumble)
-	var vcol := group.call(opt_controls_box, "Vibration") as VBoxContainer
-	var vs := seg([["on", "On"], ["off", "Off"]], func(v): game.set_opt("haptics", v))
-	opt_segs["haptics"] = vs[1]
-	vcol.add_child(vs[0])
-	# key / gamepad bindings
-	var bcol := group.call(opt_controls_box, "Key bindings") as VBoxContainer
-	var ds := seg([["kb", "Keyboard"], ["pad", "Gamepad"]], func(v): _set_bind_device(v))
-	bind_dev_btns = ds[1]
-	bcol.add_child(ds[0])
-	bind_rows = vbox(4)
-	for a in Bindings.visible_actions(game.DRIFT_ENABLED):
-		var id: String = a[0]
-		var row := hbox(6)
-		var nm := L(a[1], "body", 500, 13, FG)
-		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		nm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		nm.clip_text = true
-		nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		nm.custom_minimum_size = Vector2(60, 0)
-		row.add_child(nm)
-		var btns: Array = []
-		for slot in 2:
-			var b := tap(PANEL2, LINE, 8.0)
-			b.custom_minimum_size = Vector2(112, 34)
-			var bl := L("—", "mono", 700, 11, FG)
-			bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			b.add_child(center(bl))
-			b.set_meta("lbl", bl)
-			var sl := slot
-			b.pressed.connect(func(): _begin_rebind(id, sl))
-			row.add_child(b)
-			btns.append(b)
-		bind_btns[id] = btns
-		bind_rows.add_child(row)
-	bcol.add_child(bind_rows)
-	var reset := tap(PANEL, LINE, 10.0)
-	reset.custom_minimum_size = Vector2(0, 36)
-	var rl2 := L("Reset to defaults", "body", 600, 12, FG, false, 0.06, true)
-	rl2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	reset.add_child(center(rl2))
-	reset.pressed.connect(func():
-		_cancel_rebind()
-		Bindings.reset_device(bind_dev)
-		refresh_binds())
-	bcol.add_child(reset)
-	bind_note = L("", "body", 400, 12, DIM)
-	bind_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	bind_note.custom_minimum_size = Vector2(120, 0)
-	bcol.add_child(bind_note)
-	_set_bind_device("kb")
-
-	# ---------- Other ----------
-	# audio levels (the global on/off still lives on the top-bar sound button)
-	var mc := _slider_card(group.call(opt_other_box, "Music volume"), "Music", "Off", "Loud", func(v): game.set_music_vol(int(v)))
-	music_slider = mc[0]
-	music_out = mc[1]
-	var sc := _slider_card(group.call(opt_other_box, "Effects volume"), "SFX", "Off", "Loud", func(v): game.set_sfx_vol(int(v)))
-	sfx_slider = sc[0]
-	sfx_out = sc[1]
-	var acol := group.call(opt_other_box, "Account") as VBoxContainer
-	acct_opt_status = L("", "body", 400, 12, DIM)
-	acct_opt_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	acct_opt_status.custom_minimum_size = Vector2(120, 0)
-	acol.add_child(acct_opt_status)
-	var ob := _cbtn("Sign in / Create account", false)
-	acct_opt_btn = ob[0]
-	acct_opt_lbl = ob[1]
-	ob[0].pressed.connect(func(): show_account(true))
-	acol.add_child(ob[0])
-	net_status_lbl = L("", "body", 400, 12, DIM)
-	net_status_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	net_status_lbl.custom_minimum_size = Vector2(120, 0)
-	acol.add_child(net_status_lbl)
-
-	_set_options_tab("visuals")
-
-
-func _set_options_tab(v: String) -> void:
-	opt_visuals_box.visible = v == "visuals"
-	opt_controls_box.visible = v == "controls"
-	opt_other_box.visible = v == "other"
-	set_seg(opt_tab_seg, v)
-
-
-func _style_slider(s: HSlider) -> void:
-	var track := StyleBoxFlat.new()
-	track.bg_color = Color(1, 1, 1, 0.18)
-	track.set_corner_radius_all(3)
-	track.content_margin_top = 3
-	track.content_margin_bottom = 3
-	var fill := track.duplicate()
-	fill.bg_color = accent
-	s.add_theme_stylebox_override("slider", track)
-	s.add_theme_stylebox_override("grabber_area", fill)
-	s.add_theme_stylebox_override("grabber_area_highlight", fill)
-	var img := Image.create(36, 36, false, Image.FORMAT_RGBA8)
-	for y in 36:
-		for x in 36:
-			var d := Vector2(x + 0.5 - 18, y + 0.5 - 18).length()
-			img.set_pixel(x, y, Color(accent, clampf(16.5 - d, 0.0, 1.0)))
-	var tex := ImageTexture.create_from_image(img)
-	tex.set_size_override(Vector2i(18, 18))
-	s.add_theme_icon_override("grabber", tex)
-	s.add_theme_icon_override("grabber_highlight", tex)
 
 
 func _build_hud() -> void:
@@ -2125,7 +1606,7 @@ func _build_modals() -> void:
 	var r2 := _cbtn("Restart", false)
 	r2[0].pressed.connect(func(): game.restart(true))
 	var ropt := _cbtn("Options", false)
-	ropt[0].pressed.connect(func(): show_options(true))
+	ropt[0].pressed.connect(func(): _options.show(true))
 	row.add_child(r2[0])
 	row.add_child(ropt[0])
 	pg.add_child(row)
@@ -2185,10 +1666,11 @@ func _build_modals() -> void:
 	_build_account_modal()
 	_build_debug_modal()
 	_build_leaderboard_modal()
-	_build_track_action_modal()
-	_build_options_modal()
+	_tracks.build_action_modal()
+	_options.build_modal()
 	_build_section_modal()
-	_build_leaderboards_dialog()
+	_leaderboards = UiLeaderboards.new(self)
+	_leaderboards.build()
 	_build_achievements_modal()
 
 
@@ -2465,16 +1947,17 @@ func modal_open() -> bool:
 
 
 func _active_dialog() -> Control:
+	# the track-action sheet layers on top of the tracks section, so it owns focus while it is open
+	if _tracks.track_action_modal != null and _tracks.track_action_modal.visible:
+		return _tracks.track_action_modal
 	if section_modal != null and section_modal.visible:
 		return section_modal
-	if lbd_modal != null and lbd_modal.visible:
-		return lbd_modal
+	if _leaderboards.modal != null and _leaderboards.modal.visible:
+		return _leaderboards.modal
 	if ach_modal != null and ach_modal.visible:
 		return ach_modal
-	if options_modal != null and options_modal.visible:
-		return options_modal
-	if track_action_modal != null and track_action_modal.visible:
-		return track_action_modal
+	if _options.modal != null and _options.modal.visible:
+		return _options.modal
 	if lb_modal != null and lb_modal.visible:
 		return lb_modal
 	if debug_modal != null and debug_modal.visible:
@@ -2489,14 +1972,14 @@ func _active_dialog() -> Control:
 func _close_dialog() -> void:
 	if section_modal != null and section_modal.visible:
 		hide_section()
-	elif lbd_modal != null and lbd_modal.visible:
-		hide_leaderboards()
+	elif _leaderboards.modal != null and _leaderboards.modal.visible:
+		_leaderboards.hide()
 	elif ach_modal != null and ach_modal.visible:
 		show_achievements(false)
-	elif options_modal != null and options_modal.visible:
-		show_options(false)
-	elif track_action_modal != null and track_action_modal.visible:
-		hide_track_action()
+	elif _options.modal != null and _options.modal.visible:
+		_options.show(false)
+	elif _tracks.track_action_modal != null and _tracks.track_action_modal.visible:
+		_tracks.hide_action()
 	elif lb_modal != null and lb_modal.visible:
 		show_leaderboard(false)
 	elif debug_modal != null and debug_modal.visible:
@@ -2561,9 +2044,7 @@ func sync_account() -> void:
 		pc_avatar.color = accent if reg else FG
 		pc_avatar.queue_redraw()
 	sync_player_card()
-	if acct_opt_status:
-		acct_opt_status.text = ("Signed in as %s" % net.email) if reg else "Playing as a guest. Sign in to sync your car and runs."
-		acct_opt_lbl.text = ("Manage account" if reg else "Sign in / Create account").to_upper()
+	_options.sync_account(reg, net.email)
 	if acct_rename and not acct_rename.has_focus():
 		acct_rename.text = net.display_name
 	set_global_pp(net.global_pp)
@@ -2838,101 +2319,6 @@ func _layout_debug(W: float, H: float, sl: float, sr: float, st: float, sb: floa
 			mv.custom_minimum_size = Vector2(pw, pw)
 
 
-func _build_options_modal() -> void:
-	options_modal = ColorRect.new()
-	(options_modal as ColorRect).color = Color(5 / 255.0, 6 / 255.0, 10 / 255.0, 0.82)
-	options_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
-	options_modal.mouse_filter = Control.MOUSE_FILTER_STOP
-	options_modal.visible = false
-	add_child(options_modal)
-	var card := glass(PANEL, LINE, 20.0, 3.0)
-	card.pad(22, 16, 22, 16)
-	card.clip_contents = true
-	options_modal.add_child(card)
-	var box := vbox(12)
-	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	card.add_child(box)
-	var head := hbox(8)
-	var htext := vbox(2)
-	htext.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	htext.add_child(eyebrow("Settings"))
-	htext.add_child(L("Options", "display", 800, 24, FG, true, 0.0, true))
-	head.add_child(htext)
-	var cb := icon_btn("x")
-	cb[0].size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	cb[0].pressed.connect(func(): show_options(false))
-	head.add_child(cb[0])
-	options_modal.set_meta("close", cb[0])
-	box.add_child(head)
-	options_scroll = ScrollContainer.new()
-	options_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	options_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	options_scroll.follow_focus = true
-	options_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	options_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(options_scroll)
-
-
-func show_options(on: bool) -> void:
-	if options_modal == null or on == options_modal.visible:
-		return
-	if on:
-		if options_body.get_parent() != options_scroll:
-			options_body.get_parent().remove_child(options_body)
-			options_scroll.add_child(options_body)
-		sync_opts()
-		refresh_binds()
-		sync_account()
-		options_modal.visible = true
-		_set_stick_direction(Vector2i.ZERO)
-		_set_options_tab("visuals")
-		relayout()
-		_rise(options_modal.get_child(0))
-		if opt_tab_seg.size() > 0:
-			(opt_tab_seg[0] as Control).grab_focus()
-	else:
-		options_modal.visible = false
-		_set_stick_direction(Vector2i.ZERO)
-		var focus := _focus_owner()
-		if focus and options_modal.is_ancestor_of(focus):
-			focus.release_focus()
-		if options_body.get_parent() == options_scroll:
-			options_scroll.remove_child(options_body)
-			panes["options"].add_child(options_body)
-		if _active_section == "options":
-			_active_section = ""
-			_sync_tab_styles()
-		if pause_modal.visible:
-			pause_resume.grab_focus()
-		elif menu_on:
-			focus_default()
-
-
-func _layout_options(W: float, H: float, sl: float, sr: float, st: float, sb: float) -> void:
-	if options_modal == null or not options_modal.visible:
-		return
-	var card: Glass = options_modal.get_child(0)
-	var cw := minf(620.0, W - sl - sr - 16.0)
-	var avail := H - st - sb - 16.0
-	options_body.custom_minimum_size.x = cw - 44.0
-	# size the keybind buttons for the modal width (overrides the menu-panel sizing)
-	var cwin := cw - 44.0 - 12.0
-	var blabel := 46.0 if cwin < 300.0 else (52.0 if cwin < 360.0 else 60.0)
-	var bbtn := clampf((cwin - blabel - 18.0) / 2.0, 72.0, 120.0)
-	for row in bind_rows.get_children():
-		row.add_theme_constant_override("separation", 6)
-		row.get_child(0).custom_minimum_size.x = blabel
-		for slot in 2:
-			(row.get_child(slot + 1) as Control).custom_minimum_size.x = bbtn
-	var content := options_body.get_combined_minimum_size().y
-	options_scroll.custom_minimum_size = Vector2(0, minf(content, maxf(160.0, avail - 72.0)))
-	card.size = Vector2(cw, 0)
-	card.size = Vector2(cw, minf(card.get_combined_minimum_size().y, avail))
-	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - card.size.y) / 2.0))
-	card._sync()
-
-
 func _build_section_modal() -> void:
 	section_modal = ColorRect.new()
 	(section_modal as ColorRect).color = Color(5 / 255.0, 6 / 255.0, 10 / 255.0, 0.72)
@@ -2973,7 +2359,7 @@ func _section_body(key: String) -> Control:
 	if key == "events":
 		return events_body
 	if key == "tracks":
-		return tracks_body
+		return _tracks.tracks_body
 	return null
 
 
@@ -3000,7 +2386,7 @@ func show_section(key: String) -> void:
 	relayout()
 	_rise(section_modal.get_child(0))
 	if key == "tracks":
-		call_deferred("_populate_fav_previews")
+		_tracks.call_deferred("_populate_previews")
 		call_deferred("_focus_tracks_entry")
 	else:
 		(section_modal.get_meta("close") as Control).grab_focus()
@@ -3049,109 +2435,17 @@ func _layout_section(W: float, H: float, sl: float, sr: float, st: float, sb: fl
 		events_grid.columns = 2 if inner >= 430.0 else 1
 	elif _section_key == "tracks":
 		var cols := clampi(int(inner / 160.0), 2, 5)
-		if fav_list:
-			fav_list.columns = cols
-		if recent_track_list:
-			recent_track_list.columns = cols
+		if _tracks.fav_list:
+			_tracks.fav_list.columns = cols
+		if _tracks.recent_track_list:
+			_tracks.recent_track_list.columns = cols
 	card.size = Vector2(cw, ch)
 	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - ch) / 2.0))
 	card._sync()
 
 
-func _build_leaderboards_dialog() -> void:
-	lbd_modal = ColorRect.new()
-	(lbd_modal as ColorRect).color = Color(5 / 255.0, 6 / 255.0, 10 / 255.0, 0.72)
-	lbd_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
-	lbd_modal.mouse_filter = Control.MOUSE_FILTER_STOP
-	lbd_modal.visible = false
-	add_child(lbd_modal)
-	var card := glass(PANEL, LINE, 20.0, 3.0)
-	card.pad(22, 18, 22, 18)
-	card.clip_contents = true
-	lbd_modal.add_child(card)
-	lbd_box = vbox(12)
-	lbd_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lbd_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	card.add_child(lbd_box)
-	var head := hbox(8)
-	var htext := vbox(2)
-	htext.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	htext.add_child(eyebrow("Global standings"))
-	htext.add_child(L("Leaderboards", "display", 800, 26, FG, true, 0.0, true))
-	head.add_child(htext)
-	var cb := icon_btn("x")
-	cb[0].size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	cb[0].pressed.connect(func(): hide_leaderboards())
-	head.add_child(cb[0])
-	lbd_modal.set_meta("close", cb[0])
-	lbd_box.add_child(head)
-	var sg := seg([["global", "Global PP"], ["explorers", "Explorers"]], func(v): _set_lbd_board(v))
-	lbd_seg = sg[1]
-	lbd_box.add_child(sg[0])
-	var hero := glass(Color(accent, 0.12), Color(accent, 0.4), 14.0)
-	hero.pad(16, 12, 16, 12)
-	var hrow := hbox(12)
-	var hcol := vbox(2)
-	hcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hcol.alignment = BoxContainer.ALIGNMENT_CENTER
-	hcol.add_child(eyebrow("Your rank"))
-	lbd_hero_sub = L("Not ranked yet", "body", 500, 12, DIM)
-	lbd_hero_sub.clip_text = true
-	lbd_hero_sub.custom_minimum_size = Vector2(1, 0)
-	hcol.add_child(lbd_hero_sub)
-	hrow.add_child(hcol)
-	lbd_hero_val = L("", "mono", 700, 18, FG)
-	lbd_hero_val.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	hrow.add_child(lbd_hero_val)
-	lbd_hero_rank = L("\u2014", "display", 800, 40, accent, true, 0.0)
-	lbd_hero_rank.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	hrow.add_child(lbd_hero_rank)
-	hero.add_child(hrow)
-	lbd_box.add_child(hero)
-	lbd_scroll = ScrollContainer.new()
-	lbd_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	lbd_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	lbd_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lbd_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	lbd_box.add_child(lbd_scroll)
-	lbd_list = vbox(2)
-	lbd_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lbd_scroll.add_child(lbd_list)
-	set_seg(lbd_seg, lbd_board)
-
-
-func show_leaderboards_dialog() -> void:
-	if lbd_modal == null:
-		return
-	lbd_board = "global"
-	set_seg(lbd_seg, lbd_board)
-	_render_lbd()
-	lbd_modal.visible = true
-	_set_stick_direction(Vector2i.ZERO)
-	game.net.fetch_leaderboards()
-	relayout()
-	_rise(lbd_modal.get_child(0))
-	(lbd_modal.get_meta("close") as Control).grab_focus()
-
-
-func hide_leaderboards() -> void:
-	if lbd_modal == null or not lbd_modal.visible:
-		return
-	lbd_modal.visible = false
-	_set_stick_direction(Vector2i.ZERO)
-	var focus := _focus_owner()
-	if focus and lbd_modal.is_ancestor_of(focus):
-		focus.release_focus()
-	_active_section = ""
-	_sync_tab_styles()
-	if menu_on:
-		_focus_nav("leaderboards")
-
-
 func render_leaderboards_data(data) -> void:
-	_lbd_data = data
-	if lbd_modal and lbd_modal.visible:
-		_render_lbd()
+	_leaderboards.render_data(data)
 
 
 ## Dedicated achievements panel: the summary line plus the badge grid, opened from the bottom
@@ -3235,102 +2529,6 @@ func _layout_achievements_dialog(W: float, H: float, sl: float, sr: float, st: f
 	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - ch) / 2.0))
 	card._sync()
 
-
-func _set_lbd_board(b: String) -> void:
-	lbd_board = b
-	set_seg(lbd_seg, b)
-	_render_lbd()
-
-
-func _fmt_board_value(board: String, v: float) -> String:
-	if board == "explorers":
-		var n := int(round(v))
-		return "%d track%s" % [n, "" if n == 1 else "s"]
-	return _fmt_pp(v) + " PP"
-
-
-func _render_lbd() -> void:
-	if lbd_list == null:
-		return
-	for c in lbd_list.get_children():
-		c.queue_free()
-		lbd_list.remove_child(c)
-	var d = _lbd_data
-	if not (d is Dictionary) or d.get("error", false):
-		lbd_hero_rank.text = "\u2014"
-		lbd_hero_rank.add_theme_color_override("font_color", DIM)
-		lbd_hero_val.text = ""
-		lbd_hero_sub.text = "Connect to see global standings"
-		var m := L("Sign in and race to join the global leaderboards.", "body", 400, 12, DIM)
-		m.custom_minimum_size = Vector2(0, 30)
-		lbd_list.add_child(m)
-		return
-	var board = d.get(lbd_board, {})
-	if not (board is Dictionary):
-		board = {}
-	var me = board.get("me")
-	if me is Dictionary and int(me.get("rank", 0)) > 0:
-		lbd_hero_rank.text = "#%d" % int(me.rank)
-		lbd_hero_rank.add_theme_color_override("font_color", accent)
-		lbd_hero_val.text = _fmt_board_value(lbd_board, float(me.get("value", 0.0)))
-		# the global board carries the player's RL-style medal; surface it beside the rank
-		if lbd_board == "global" and me.get("medal") is Dictionary:
-			lbd_hero_sub.text = _medal_name(me.medal)
-			lbd_hero_sub.add_theme_color_override("font_color", _medal_col(me.medal))
-		else:
-			lbd_hero_sub.text = "Your rank"
-			lbd_hero_sub.add_theme_color_override("font_color", DIM)
-	else:
-		lbd_hero_rank.text = "\u2014"
-		lbd_hero_rank.add_theme_color_override("font_color", DIM)
-		lbd_hero_val.text = ""
-		lbd_hero_sub.text = "Race to get ranked"
-	var top = board.get("top", [])
-	if not (top is Array) or top.is_empty():
-		var m2 := L("No one has ranked yet \u2014 be the first.", "body", 400, 12, DIM)
-		m2.custom_minimum_size = Vector2(0, 30)
-		lbd_list.add_child(m2)
-		return
-	var my_rank := int(me.get("rank", -1)) if me is Dictionary else -1
-	for t in top:
-		if not (t is Dictionary):
-			continue
-		var rk := int(t.get("rank", 0))
-		lbd_list.add_child(_lbd_row(rk, str(t.get("name", "racer")), float(t.get("value", 0.0)), rk == my_rank))
-
-
-func _lbd_row(rank: int, name: String, value: float, me: bool) -> Control:
-	var row := glass(Color(accent, 0.12) if me else Color(0, 0, 0, 0), Color(0, 0, 0, 0), 8.0)
-	row.custom_minimum_size = Vector2(0, 34)
-	row.pad(8, 0, 10, 0)
-	var h := hbox(10)
-	var rk := L("#%d" % rank, "mono", 700, 13, accent if me else DIM)
-	rk.custom_minimum_size = Vector2(44, 0)
-	rk.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	h.add_child(rk)
-	var nm := L(name, "body", 600, 13, FG if me else FG, false, 0.04, true)
-	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	nm.clip_text = true
-	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	nm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	h.add_child(nm)
-	var vl := L(_fmt_board_value(lbd_board, value), "mono", 700, 13, accent if me else FG)
-	vl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	h.add_child(vl)
-	row.add_child(h)
-	return row
-
-
-func _layout_leaderboards_dialog(W: float, H: float, sl: float, sr: float, st: float, sb: float) -> void:
-	if lbd_modal == null or not lbd_modal.visible:
-		return
-	var card: Glass = lbd_modal.get_child(0)
-	var cw := minf(820.0, W - sl - sr - 16.0)
-	var ch := minf(880.0, H - st - sb - 16.0)
-	lbd_box.custom_minimum_size.x = cw - 44.0
-	card.size = Vector2(cw, ch)
-	card.position = Vector2((W - cw) / 2.0, maxf(st + 8.0, (H - ch) / 2.0))
-	card._sync()
 
 func _build_overlays() -> void:
 	toast_box = glass(PANEL, LINE, 10.0, 2.5)
@@ -3488,14 +2686,14 @@ func relayout() -> void:
 	if events_grid:
 		events_grid.columns = 2 if content_w >= 430.0 else 1
 	var tile_cols := clampi(int(content_w / 150.0), 1, 4)
-	if fav_list:
-		fav_list.columns = tile_cols
-	if recent_track_list:
-		recent_track_list.columns = tile_cols
+	if _tracks.fav_list:
+		_tracks.fav_list.columns = tile_cols
+	if _tracks.recent_track_list:
+		_tracks.recent_track_list.columns = tile_cols
 	var bind_label_w := 46.0 if W < 360.0 else (52.0 if W < 400.0 else 60.0)
 	var bind_gap := 4 if W < 360.0 else 6
 	var bind_button_w := clampf((content_w - bind_label_w - float(bind_gap * 3)) / 2.0, 72.0, 112.0)
-	for row in bind_rows.get_children():
+	for row in _options.bind_rows.get_children():
 		row.add_theme_constant_override("separation", bind_gap)
 		row.get_child(0).custom_minimum_size.x = bind_label_w
 		for slot in 2:
@@ -3530,10 +2728,10 @@ func relayout() -> void:
 	_layout_seed_dialog(W, H, sl, sr, st, sb)
 	_layout_debug(W, H, sl, sr, st, sb)
 	_layout_leaderboard(W, H, sl, sr, st, sb)
-	_layout_track_action(W, H, sl, sr, st, sb)
-	_layout_options(W, H, sl, sr, st, sb)
+	_tracks.layout_action(W, H, sl, sr, st, sb)
+	_options.layout(W, H, sl, sr, st, sb)
 	_layout_section(W, H, sl, sr, st, sb)
-	_layout_leaderboards_dialog(W, H, sl, sr, st, sb)
+	_leaderboards.layout(W, H, sl, sr, st, sb)
 	_layout_achievements_dialog(W, H, sl, sr, st, sb)
 	for m in [pause_modal, finish_modal]:
 		var card: Glass = m.get_child(0)
@@ -3771,12 +2969,8 @@ func set_accent(a: Color, on: Color) -> void:
 	_style_play()
 	if tabs.size() > 0:
 		_sync_tab_styles()
-	_style_slider(sens_slider)
-	_style_slider(zoom_slider)
-	_style_slider(uiscale_slider)
-	_style_slider(fov_slider)
-	_style_slider(music_slider)
-	_style_slider(sfx_slider)
+	if _options:
+		_options.restyle()
 	var f: StyleBoxFlat = seed_in.get_theme_stylebox("focus")
 	f.border_color = accent
 	for m in [pause_modal, finish_modal, acct_modal, seed_modal]:
@@ -4170,8 +3364,8 @@ func _sync_card_best() -> void:
 
 
 func set_net_status(text: String) -> void:
-	if net_status_lbl:
-		net_status_lbl.text = text
+	if _options:
+		_options.set_net_status(text)
 
 
 func set_replay_mode(on: bool, best_time: float = 0.0, exact: bool = true) -> void:
@@ -4464,102 +3658,15 @@ func _fmt_pp(v: float) -> String:
 	return out
 
 
+## Tracks-dialog renders delegate to the module; kept here as the stable API the game + menu call.
 func render_favs() -> void:
-	# the saved-track tiles only live inside the Tracks dialog; while it's closed, skip the rebuild
-	# (show_section rebuilds from current state on open) so boot and every refresh_menu don't pay for it
-	if _section_key != "tracks":
-		return
-	fav_preview_revision += 1
-	for c in fav_list.get_children():
-		c.queue_free()
-		fav_list.remove_child(c)
-	var favs: Array = game.favs
-	fav_preview_views.clear()
-	fav_empty.visible = favs.is_empty()
-	for f in favs:
-		var tile := _track_tile(str(f.seed), str(f.get("env", "")), str(f.name), true)
-		fav_list.add_child(tile.cell)
-		fav_preview_views.append(tile.view)
-	if _section_key == "tracks" and section_modal != null and section_modal.visible:
-		call_deferred("_populate_fav_previews")
+	if _tracks:
+		_tracks.render_favs()
 
 
 func render_recent_tracks() -> void:
-	if not recent_track_list or _section_key != "tracks":
-		return
-	fav_preview_revision += 1
-	recent_preview_views.clear()
-	for child in recent_track_list.get_children():
-		recent_track_list.remove_child(child)
-		child.queue_free()
-	var tracks: Array = game.recent_tracks
-	recent_track_empty.visible = tracks.is_empty()
-	for entry in tracks:
-		if not entry is Dictionary:
-			continue
-		var seed_s := str(entry.get("seed", ""))
-		if seed_s == "":
-			continue
-		var tile := _track_tile(seed_s, str(entry.get("env", "")), str(entry.get("name", seed_s)), false)
-		recent_track_list.add_child(tile.cell)
-		recent_preview_views.append(tile.view)
-	if _section_key == "tracks" and section_modal != null and section_modal.visible:
-		call_deferred("_populate_fav_previews")
-
-
-## Fill in the track-tile minimaps. Cached (and already-loaded current) tracks render instantly;
-## the rest are generated on worker threads in parallel — WorkerThreadPool caps itself at the host's
-## core count, so the previews build quickly without pinning every CPU — then applied on the main
-## thread. Generation is pure (TrackGen keeps no shared state), so it is safe off the main thread.
-func _populate_fav_previews() -> void:
-	if fav_preview_task_running or _section_key != "tracks" or section_modal == null or not section_modal.visible:
-		return
-	fav_preview_task_running = true
-	var revision := fav_preview_revision
-	var previews: Array = fav_preview_views + recent_preview_views
-	# cheap pass: paint every cache hit now, and gather the unique seeds that still need generating
-	var pending: Array = []            # [{entry, key}]
-	var jobs := {}                     # key -> {seed, env}; deduped so shared seeds generate once
-	for entry in previews:
-		var preview := entry.map as MapView
-		if not is_instance_valid(preview) or preview.t != null:
-			continue
-		var key: String = str(entry.env) + "|" + str(entry.seed)
-		var cached := _cache_lookup(key, str(entry.seed), str(entry.env))
-		if cached != null:
-			preview.set_track(cached, entry.accent)
-			continue
-		pending.append({"entry": entry, "key": key})
-		if not jobs.has(key):
-			jobs[key] = {"seed": str(entry.seed), "env": str(entry.env)}
-	if jobs.is_empty():
-		fav_preview_task_running = false
-		return
-	# generate the misses in parallel off the main thread
-	var keys: Array = jobs.keys()
-	var results := {}
-	var mutex := Mutex.new()
-	var task_id := WorkerThreadPool.add_group_task(func(i: int):
-		var k: String = keys[i]
-		var job: Dictionary = jobs[k]
-		var td := TrackGen.generate(job.seed, job.env)
-		mutex.lock()
-		results[k] = td
-		mutex.unlock(), keys.size(), -1, false, "seedline track previews")
-	while not WorkerThreadPool.is_group_task_completed(task_id):
-		await get_tree().process_frame
-	WorkerThreadPool.wait_for_group_task_completion(task_id)
-	# apply on the main thread (unless the list changed underneath us while generating)
-	if revision == fav_preview_revision:
-		for k in results:
-			_cache_put(str(k), results[k])
-		for item in pending:
-			var preview := item.entry.map as MapView
-			if is_instance_valid(preview) and preview.t == null and results.has(item.key):
-				preview.set_track(results[item.key], item.entry.accent)
-	fav_preview_task_running = false
-	if _section_key == "tracks" and section_modal.visible and revision != fav_preview_revision:
-		call_deferred("_populate_fav_previews")
+	if _tracks:
+		_tracks.render_recent()
 
 
 ## Cached track for a tile, or the live track if it is the one on screen; null if it must be generated.
@@ -4623,10 +3730,10 @@ func _focus_tracks_entry() -> void:
 	if not menu_on or _section_key != "tracks" or not section_modal.visible:
 		return
 	var target: Control = null
-	if fav_list.get_child_count() > 0:
-		target = fav_list.get_child(0)
-	elif recent_track_list.get_child_count() > 0:
-		target = recent_track_list.get_child(0)
+	if _tracks.fav_list.get_child_count() > 0:
+		target = _tracks.fav_list.get_child(0)
+	elif _tracks.recent_track_list.get_child_count() > 0:
+		target = _tracks.recent_track_list.get_child(0)
 	else:
 		target = tabs.filter(func(tab): return tab.get_meta("v") == "tracks")[0]
 	if target and target.is_visible_in_tree():
@@ -4635,29 +3742,11 @@ func _focus_tracks_entry() -> void:
 			tab_scroll.ensure_control_visible(target)
 
 
+## The options widgets live in ui_options; this keeps the stable entry the game's setters call, and
+## does the cross-cutting bits (FPS readout, sound icon, reflow) that are not options-specific.
 func sync_opts() -> void:
-	var o: Dictionary = game.opts
-	for k in opt_segs:
-		set_seg(opt_segs[k], str(o.get(k, "")))
-	var v := int(o.sensV)
-	sens_slider.set_value_no_signal(v)
-	sens_out.text = ("Gentle" if v < 34 else ("Normal" if v < 67 else "Quick")).to_upper()
-	var zv := int(o.get("zoom", 50))
-	zoom_slider.set_value_no_signal(zv)
-	zoom_out.text = "DEFAULT" if zv == 50 else ("%+d%%" % int(round((zv - 50) / 50.0 * 15.0)))
-	var uv := int(o.get("uiscale", 50))
-	uiscale_slider.set_value_no_signal(uv)
-	uiscale_out.text = "%d%%" % int(round((1.0 + (uv - 50) / 50.0 * 0.25) * 100.0))
-	var fv := int(o.get("fov", 50))
-	fov_slider.set_value_no_signal(fv)
-	fov_out.text = "%d°" % int(round(46.0 + (fv - 50) / 50.0 * 10.0))
-	var mvol := int(o.get("musicvol", 55))
-	music_slider.set_value_no_signal(mvol)
-	music_out.text = "%d%%" % mvol
-	var svol := int(o.get("sfxvol", 100))
-	sfx_slider.set_value_no_signal(svol)
-	sfx_out.text = "%d%%" % svol
-	stats_lbl.visible = str(o.stats) != ""
+	_options.sync()
+	stats_lbl.visible = str(game.opts.stats) != ""
 	sync_icons()
 	relayout()
 
@@ -4803,84 +3892,18 @@ func hud_sync(force: bool) -> void:
 		clock.position.x = (size.x - clock.size.x) / 2.0
 
 
-func _set_bind_device(d: String) -> void:
-	bind_dev = d
-	_cancel_rebind()
-	set_seg(bind_dev_btns, d)
-	refresh_binds()
-
-
+## Key-binding flow lives in ui_options; these stay as the entry points the input pipeline calls.
 func refresh_binds() -> void:
-	for id in bind_btns:
-		for slot in 2:
-			var b: Tap = bind_btns[id][slot]
-			var v = Bindings.get_slot(bind_dev, id, slot)
-			var txt: String = Bindings.key_label(v) if bind_dev == "kb" else Bindings.pad_label(v)
-			var listening: bool = _rebind.get("action", "") == id and _rebind.get("slot", -1) == slot
-			(b.get_meta("lbl") as Label).text = "Press…" if listening else txt
-			(b.get_meta("lbl") as Label).add_theme_color_override("font_color", accent if listening else FG)
-	if bind_dev == "kb":
-		bind_note.text = "Tap a slot, then press a key. Tap it again to clear. Esc cancels."
-	else:
-		bind_note.text = "Tap a slot, then press a button or move a stick or trigger. Menus always use D-pad / stick, A / Cross to select, B / Circle to go back."
-	refresh_hint()
-
-
-func _begin_rebind(action: String, slot: int) -> void:
-	if _rebind.get("action", "") == action and _rebind.get("slot", -1) == slot:
-		_apply_binding(0 if bind_dev == "kb" else "")
-		return
-	_rebind = {"action": action, "slot": slot, "dev": bind_dev}
-	_rebind_t = Time.get_ticks_msec()
-	refresh_binds()
-	var stamp := _rebind_t
-	get_tree().create_timer(6.0).timeout.connect(func():
-		if _rebind_t == stamp and not _rebind.is_empty():
-			_cancel_rebind())
+	if _options:
+		_options.refresh_binds()
 
 
 func rebind_active() -> bool:
-	return not _rebind.is_empty()
+	return _options != null and _options.rebind_active()
 
 
-func _cancel_rebind() -> void:
-	if _rebind.is_empty():
-		return
-	_rebind = {}
-	refresh_binds()
-
-
-func _apply_binding(value) -> void:
-	Bindings.set_slot(_rebind.dev, _rebind.action, _rebind.slot, value)
-	_rebind = {}
-	refresh_binds()
-
-
-## Called first for every input event while a slot is listening; returns true if the event was consumed.
 func capture_binding(ev: InputEvent) -> bool:
-	if Time.get_ticks_msec() - _rebind_t < 200:
-		return ev is InputEventKey or ev is InputEventJoypadButton or ev is InputEventJoypadMotion
-	if _rebind.dev == "kb":
-		if ev is InputEventKey:
-			if ev.pressed and not ev.echo:
-				if ev.keycode == KEY_ESCAPE:
-					_cancel_rebind()
-				else:
-					var code: int = ev.physical_keycode if ev.physical_keycode != 0 else ev.keycode
-					_apply_binding(code)
-			return true
-		return false
-	if ev is InputEventJoypadButton or ev is InputEventJoypadMotion:
-		var b := Bindings.pad_from_event(ev)
-		if b.begins_with("a:") and b.split(":")[1] in ["4", "5"] and b.ends_with("-"):
-			return true
-		if b != "":
-			_apply_binding(b)
-		return true
-	if ev is InputEventKey and ev.pressed and ev.keycode == KEY_ESCAPE:
-		_cancel_rebind()
-		return true
-	return false
+	return _options != null and _options.capture_binding(ev)
 
 
 func refresh_hint() -> void:
